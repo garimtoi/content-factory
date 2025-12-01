@@ -62,12 +62,14 @@ src/
 │   └── job-detail.html        # Job details
 ├── js/
 │   ├── db.js                  # IndexedDB (Dexie.js) - tables: jobs, photos, temp_photos, users, settings
-│   ├── db-api.js              # Supabase-compatible API layer
-│   ├── video-generator.js     # Canvas + MediaRecorder video generation
+│   ├── db-api.js              # Supabase-compatible API layer (validateJobData, validateFile)
+│   ├── video-generator.js     # Canvas + MediaRecorder video generation (60s timeout)
 │   └── utils/
-│       ├── errors.js          # AppError, UploadError, NetworkError, ValidationError
-│       ├── retry.js           # withRetry(), fetchWithRetry() - exponential backoff
-│       └── state.js           # JobState class - hybrid LocalStorage + IndexedDB
+│       ├── errors.js          # AppError hierarchy + getErrorCategory()
+│       ├── logger.js          # Production-safe logging (sanitizeForLog)
+│       ├── retry.js           # withRetry() - exponential backoff, 2min total timeout
+│       ├── sanitizer.js       # escapeHtml() for XSS prevention
+│       └── state.js           # JobState - hybrid LocalStorage + IndexedDB (8h session)
 tests/
 ├── setup.js                   # Vitest global setup (mocks fetch, alert)
 ├── unit/                      # Vitest unit tests
@@ -212,40 +214,22 @@ navigator.storage.estimate().then(e =>
 
 ---
 
-## Known Issues & Technical Debt
+## Remaining Technical Debt
 
-코드 리뷰 결과 (2025-12-01) 발견된 주요 이슈입니다. `TODO.md` 참조.
+코드 리뷰 결과 (2025-12-01) 대부분 해결됨. 남은 항목은 `TODO.md` 참조.
 
-### Critical (즉시 수정 필요)
+| 영역 | 이슈 | 우선순위 |
+|------|------|----------|
+| Style | Magic Numbers 상수화 | Medium |
+| Style | JSDoc 보완 | Low |
 
-| 영역 | 이슈 | 파일 |
-|------|------|------|
-| Security | XSS - innerHTML에 사용자 입력 직접 삽입 | `gallery.html`, `upload.html`, `job-detail.html` |
-| Logic | Race Condition - 작업번호 동시 생성 시 중복 | `db-api.js:319-347` |
-| Logic | 상태 불일치 - LocalStorage ↔ IndexedDB 동기화 | `state.js:208-232` |
-| Performance | N+1 Query - Job 조회 시 Photos 반복 쿼리 | `db-api.js:63-75` |
+### Implemented Security Features
 
-### Security Checklist (구현 필요)
-
-```javascript
-// 1. XSS 방지 - escapeHtml 함수 사용
-function escapeHtml(unsafe) {
-  return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-}
-
-// 2. 입력 검증 - validateJobData 추가 필요
-// 3. 파일 업로드 - 크기(10MB), 타입(image/*) 제한 필요
-// 4. CSRF 토큰 - 향후 서버 연동 시 필요
-```
-
-### Performance Optimization Checklist
-
-- [ ] N+1 Query → `anyOf()` 사용
-- [ ] Photo Count → `count()` 직접 사용 (toArray 금지)
-- [ ] Bulk Insert → `bulkAdd()` 사용
-- [ ] Base64 변환 → `URL.createObjectURL()` 사용
-- [ ] DOM 업데이트 → DocumentFragment 사용
+- XSS 방지: `sanitizer.js` - `escapeHtml()` 적용
+- 입력 검증: `db-api.js` - `validateJobData()`, `validateFile()`
+- 파일 제한: 10MB, `image/jpeg|png|webp`, 최대 50장
+- CSP 헤더: `vite.config.js` - 서버 응답 헤더 설정
+- 세션 관리: 8시간 만료 + 30분 비활성 타임아웃
 
 ---
 

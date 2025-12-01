@@ -377,7 +377,90 @@
       }
     }
 
-    // Render jobs
+    // Create a single job card element
+    function createJobCardElement(job) {
+      const photos = job.photos || [];
+      const displayPhotos = photos.slice(0, 4);
+      const moreCount = photos.length - 4;
+
+      const statusLabels = {
+        uploaded: '업로드됨',
+        processing: '처리 중',
+        published: '게시됨'
+      };
+
+      const card = document.createElement('div');
+      card.className = 'job-card';
+      card.addEventListener('click', () => {
+        location.href = `job-detail.html?id=${job.id}`;
+      });
+
+      // Header
+      const header = document.createElement('div');
+      header.className = 'job-header';
+
+      const jobNumber = document.createElement('span');
+      jobNumber.className = 'job-number';
+      jobNumber.textContent = job.job_number || '';
+
+      const jobDate = document.createElement('span');
+      jobDate.className = 'job-date';
+      jobDate.textContent = formatDate(job.work_date);
+
+      header.appendChild(jobNumber);
+      header.appendChild(jobDate);
+
+      // Title
+      const title = document.createElement('div');
+      title.className = 'job-title';
+      title.textContent = job.car_model || '제목 없음';
+
+      // Photos
+      const photosDiv = document.createElement('div');
+      photosDiv.className = 'job-photos';
+
+      displayPhotos.forEach(photo => {
+        const photoDiv = document.createElement('div');
+        photoDiv.className = 'job-photo';
+        const img = document.createElement('img');
+        img.src = photo.thumbnail_data || photo.image_data;
+        img.alt = 'Photo';
+        photoDiv.appendChild(img);
+        photosDiv.appendChild(photoDiv);
+      });
+
+      if (moreCount > 0) {
+        const moreDiv = document.createElement('div');
+        moreDiv.className = 'job-photo-more';
+        moreDiv.textContent = `+${moreCount}`;
+        photosDiv.appendChild(moreDiv);
+      }
+
+      // Footer
+      const footer = document.createElement('div');
+      footer.className = 'job-footer';
+
+      const status = document.createElement('span');
+      status.className = `job-status ${job.status}`;
+      status.textContent = statusLabels[job.status] || job.status;
+
+      const photoCount = document.createElement('span');
+      photoCount.className = 'job-photo-count';
+      photoCount.innerHTML = `<i class="bi bi-image"></i> ${photos.length}장`;
+
+      footer.appendChild(status);
+      footer.appendChild(photoCount);
+
+      // Assemble card
+      card.appendChild(header);
+      card.appendChild(title);
+      card.appendChild(photosDiv);
+      card.appendChild(footer);
+
+      return card;
+    }
+
+    // Render jobs using DocumentFragment for batch DOM insertion
     function renderJobs(jobs) {
       const container = document.getElementById('jobs-list');
 
@@ -395,46 +478,14 @@
         return;
       }
 
-      container.innerHTML = jobs.map(job => {
-        const photos = job.photos || [];
-        const displayPhotos = photos.slice(0, 4);
-        const moreCount = photos.length - 4;
+      // Use DocumentFragment for batch DOM insertion
+      const fragment = document.createDocumentFragment();
+      jobs.forEach(job => {
+        fragment.appendChild(createJobCardElement(job));
+      });
 
-        const statusLabels = {
-          uploaded: '업로드됨',
-          processing: '처리 중',
-          published: '게시됨'
-        };
-
-        return `
-          <div class="job-card" onclick="location.href='job-detail.html?id=${job.id}'">
-            <div class="job-header">
-              <span class="job-number">${escapeHtml(job.job_number)}</span>
-              <span class="job-date">${formatDate(job.work_date)}</span>
-            </div>
-
-            <div class="job-title">${escapeHtml(job.car_model) || '제목 없음'}</div>
-
-            <div class="job-photos">
-              ${displayPhotos.map(photo => `
-                <div class="job-photo">
-                  <img src="${photo.thumbnail_data || photo.image_data}" alt="Photo">
-                </div>
-              `).join('')}
-              ${moreCount > 0 ? `
-                <div class="job-photo-more">+${moreCount}</div>
-              ` : ''}
-            </div>
-
-            <div class="job-footer">
-              <span class="job-status ${job.status}">${statusLabels[job.status] || job.status}</span>
-              <span class="job-photo-count">
-                <i class="bi bi-image"></i> ${photos.length}장
-              </span>
-            </div>
-          </div>
-        `;
-      }).join('');
+      container.innerHTML = '';
+      container.appendChild(fragment);
     }
 
     // Filter jobs

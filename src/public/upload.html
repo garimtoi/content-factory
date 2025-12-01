@@ -583,6 +583,9 @@
           };
 
           photos[currentCategory].push(photoData);
+
+          // Incremental DOM update (no full re-render)
+          addPhotoToGrid(photoData);
           successCount++;
         } catch (error) {
           console.error('Failed to process photo:', error);
@@ -607,9 +610,8 @@
       // Update non-photo state (carModel only)
       jobState.update({ carModel: jobTitle.value });
 
-      // Update UI
+      // Update UI (counts only - photos added incrementally above)
       updateCounts();
-      updatePhotosGrid();
       updateSubmitButton();
     }
 
@@ -643,7 +645,36 @@
       }
     }
 
-    // Update photos grid in modal
+    // Create a single photo element (reusable helper)
+    function createPhotoElement(photo) {
+      const div = document.createElement('div');
+      div.className = 'photo-item';
+      div.dataset.photoId = photo.id;
+
+      const img = document.createElement('img');
+      img.src = photo.thumbnail;
+      img.alt = 'Photo';
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.innerHTML = '<i class="bi bi-x"></i>';
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deletePhoto(photo.category, photo.id);
+      });
+
+      const badge = document.createElement('span');
+      badge.className = 'category-badge';
+      badge.textContent = photo.categoryLabel;
+
+      div.appendChild(img);
+      div.appendChild(deleteBtn);
+      div.appendChild(badge);
+
+      return div;
+    }
+
+    // Update photos grid in modal (full rebuild - use sparingly)
     function updatePhotosGrid() {
       const allPhotos = [];
 
@@ -661,19 +692,42 @@
 
       noPhotosMessage.style.display = 'none';
 
-      photosGrid.innerHTML = allPhotos.map((photo, index) => `
-        <div class="photo-item" data-photo-id="${escapeHtml(photo.id)}">
-          <img src="${photo.thumbnail}" alt="Photo">
-          <button class="delete-btn" onclick="deletePhoto('${escapeHtml(photo.category)}', '${escapeHtml(photo.id)}')">
-            <i class="bi bi-x"></i>
-          </button>
-          <span class="category-badge">${escapeHtml(photo.categoryLabel)}</span>
-        </div>
-      `).join('');
+      // Use DocumentFragment for batch DOM insertion
+      const fragment = document.createDocumentFragment();
+      allPhotos.forEach(photo => {
+        fragment.appendChild(createPhotoElement(photo));
+      });
+
+      photosGrid.innerHTML = '';
+      photosGrid.appendChild(fragment);
     }
 
-    // Delete photo (global function for onclick)
-    window.deletePhoto = async function(category, photoId) {
+    // Add single photo to grid (incremental update)
+    function addPhotoToGrid(photo) {
+      noPhotosMessage.style.display = 'none';
+      const element = createPhotoElement({
+        ...photo,
+        categoryLabel: CATEGORIES[photo.category].label
+      });
+      photosGrid.appendChild(element);
+    }
+
+    // Remove single photo from grid (incremental update)
+    function removePhotoFromGrid(photoId) {
+      const element = photosGrid.querySelector(`[data-photo-id="${photoId}"]`);
+      if (element) {
+        element.remove();
+      }
+
+      // Show empty message if no photos left
+      const totalCount = Object.values(photos).reduce((sum, arr) => sum + arr.length, 0);
+      if (totalCount === 0) {
+        noPhotosMessage.style.display = 'block';
+      }
+    }
+
+    // Delete photo
+    async function deletePhoto(category, photoId) {
       // Find and remove from local photos array
       const index = photos[category].findIndex(p => p.id == photoId);
       if (index !== -1) {
@@ -683,10 +737,11 @@
       // Remove from IndexedDB via jobState
       await jobState.removePhoto(category, index);
 
+      // Incremental DOM update (no full re-render)
+      removePhotoFromGrid(photoId);
       updateCounts();
-      updatePhotosGrid();
       updateSubmitButton();
-    };
+    }
 
     // Update submit button state
     function updateSubmitButton() {

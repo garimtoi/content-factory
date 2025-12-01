@@ -124,9 +124,9 @@
   - `tests/unit/upload.test.js:3` - `addPhotoToCategory`
 
 ### Performance
-- [ ] **DOM 렌더링 최적화** [High]
-  - `upload.html:617-643` - DocumentFragment 사용
-  - 전체 innerHTML 교체 → 증분 업데이트
+- [x] **DOM 렌더링 최적화** [High] ✅ 완료
+  - `upload.html` - DocumentFragment + 증분 업데이트 (addPhotoToGrid, removePhotoFromGrid)
+  - `gallery.html` - DocumentFragment + createJobCardElement
 
 - [ ] **Sequence 정렬 통일** [Medium]
   - `state.js` - IndexedDB와 LocalStorage sequence 값 통일
