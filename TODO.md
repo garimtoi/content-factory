@@ -143,6 +143,125 @@
 
 ---
 
+## 쇼츠 품질 향상 (PRD-0011 v3.0)
+
+**총 비용: $0** | **기간: 6주** | **PRD**: `tasks/prds/0011-prd-shorts-enhancement.md`
+
+### Phase MVP: 핵심 기능 (3주) ⭐⭐
+
+#### 1. 이미지 순서 설정 (자동)
+- [ ] `src/js/video-sequencer.js` 생성
+  - extractOrderFromFilename() - 파일명에서 타임스탬프/순번 추출
+  - sortPhotosByFilename() - 촬영 순서 정렬
+  - sortPhotosByCategoryThenFilename() - 카테고리 우선 정렬
+
+#### 2. 영상 생성 (유지시간 설정)
+- [ ] `video-generator.js` 옵션 확장
+  - photoDuration 설정 (10~15초) - 자막 읽기 시간 고려
+  - VIDEO_OPTIONS 상수
+
+#### 3. BGM 삽입
+- [ ] `src/assets/bgm/` 폴더 생성 + manifest.json
+- [ ] 사용자가 BGM 파일 직접 추가
+- [ ] `src/js/bgm-manager.js` 생성
+  - getBGMList() - manifest.json 기반
+  - loadRandomBGM() - 랜덤 BGM + 랜덤 시작 지점
+- [ ] `src/js/audio-mixer.js` 생성
+  - mixBGMToStream(), fadeAudio()
+
+#### 4. 자막 삽입
+- [ ] `src/js/subtitle-renderer.js` 생성
+  - CATEGORY_SUBTITLES (입고/문제/과정/해결/출고)
+  - SUBTITLE_STYLE, SAFE_ZONE 상수
+  - renderSubtitle()
+
+#### 5. 고정 정보 삽입 (로고/연락처)
+- [ ] `src/js/branding-renderer.js` 생성
+  - renderLogo(), renderContact()
+  - loadBranding(), saveBranding() (LocalStorage)
+
+#### UI & 통합
+- [ ] `job-detail.html` 마케팅 영상 옵션 UI 추가
+- [ ] `video-generator.js` MVP 기능 통합
+- [ ] 단위 테스트 작성
+- [ ] E2E 테스트 작성
+
+---
+
+### Phase 2: AI 나레이션 (3주) ⭐⭐⭐
+
+- [ ] Google Cloud Console TTS API 활성화
+- [ ] API 키 발급 및 환경변수 설정
+- [ ] `src/js/narration-generator.js` 생성
+  - generateNarration() (Google TTS)
+  - SCRIPT_TEMPLATES, VOICE_OPTIONS
+- [ ] `vite.config.js` TTS API 프록시 설정
+- [ ] `audio-mixer.js` 나레이션+BGM 믹싱 추가
+- [ ] `job-detail.html` 나레이션 UI 추가
+- [ ] 단위 테스트 작성
+
+### 환경변수 (.env)
+
+```
+# Phase 2에서 필요
+VITE_GOOGLE_TTS_API_KEY=
+```
+
+---
+
+## 분산 아키텍처 (PRD-0012)
+
+**예상 비용: $25~66/월** | **기간: 5주** | **PRD**: `tasks/prds/0012-prd-distributed-architecture.md`
+
+### Phase 1: Supabase 연동 (1주)
+
+- [ ] Supabase 프로젝트 생성
+- [ ] 데이터베이스 스키마 마이그레이션 (jobs, photos, technicians)
+- [ ] Storage 버킷 생성 + RLS 정책
+- [ ] `src/js/supabase-client.js` 생성
+- [ ] 환경변수 설정 (`.env`)
+- [ ] 기존 `db-api.js` → Supabase 마이그레이션
+
+### Phase 2: PWA 오프라인 동기화 (1주)
+
+- [ ] `src/js/sync-queue.js` 생성
+- [ ] `db.js` 스키마 확장 (upload_queue)
+- [ ] 네트워크 상태 표시 UI
+- [ ] 큐 상태 표시 UI ("3개 업로드 대기 중")
+- [ ] 수동 동기화 버튼
+
+### Phase 3: 서버 비디오 생성 (2주)
+
+- [ ] 옵션 선택 (Render + FFmpeg vs Creatomate)
+- [ ] Video Worker 서버 구현
+- [ ] Supabase Edge Function (트리거)
+- [ ] BGM 믹싱 기능 (FFmpeg)
+- [ ] 자막 오버레이 (drawtext filter)
+- [ ] 로고 워터마크 (overlay filter)
+
+### Phase 4: Push 알림 (1주)
+
+- [ ] VAPID 키 생성
+- [ ] `src/js/push-manager.js` 생성
+- [ ] Service Worker Push 핸들러
+- [ ] Supabase에 구독 테이블 추가
+- [ ] 서버에서 Push 전송
+
+### 환경변수 (.env)
+
+```
+# 프론트엔드
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_VAPID_PUBLIC_KEY=
+
+# Video Worker
+SUPABASE_SERVICE_KEY=
+VAPID_PRIVATE_KEY=
+```
+
+---
+
 ## 참고
 
 - 코드 리뷰 보고서: 2025-12-01
