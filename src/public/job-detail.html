@@ -6,6 +6,13 @@
   <meta name="theme-color" content="#667eea">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>작업 상세 - Photo Factory</title>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const hash = typeof __GIT_HASH__ !== 'undefined' ? __GIT_HASH__ : 'dev';
+      const msg = typeof __GIT_MESSAGE__ !== 'undefined' ? __GIT_MESSAGE__ : '';
+      document.title = `작업 상세 [${hash}] ${msg.slice(0, 20)}`;
+    });
+  </script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
   <style>

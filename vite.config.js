@@ -1,6 +1,18 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 import os from 'os';
+import { execSync } from 'child_process';
+
+// Get git info for version display
+function getGitInfo() {
+  try {
+    const hash = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    const message = execSync('git log -1 --format=%s', { encoding: 'utf8' }).trim();
+    return { hash, message };
+  } catch {
+    return { hash: 'dev', message: 'local' };
+  }
+}
 
 // Get local network IP address
 function getNetworkIP() {
@@ -34,10 +46,13 @@ const cspPolicy = [
 export default defineConfig({
   root: 'src/public',
   publicDir: '../../public',
-  // Inject network IP at build/dev time
+  // Inject build info at build/dev time
   define: {
     '__NETWORK_IP__': JSON.stringify(getNetworkIP()),
-    '__DEV_PORT__': JSON.stringify(6010)
+    '__DEV_PORT__': JSON.stringify(6010),
+    '__GIT_HASH__': JSON.stringify(getGitInfo().hash),
+    '__GIT_MESSAGE__': JSON.stringify(getGitInfo().message),
+    '__APP_VERSION__': JSON.stringify('1.0.0')
   },
   server: {
     host: '0.0.0.0',

@@ -6,6 +6,14 @@
   <meta name="theme-color" content="#667eea">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Photo Factory</title>
+  <script>
+    // Set version in title
+    document.addEventListener('DOMContentLoaded', () => {
+      const hash = typeof __GIT_HASH__ !== 'undefined' ? __GIT_HASH__ : 'dev';
+      const msg = typeof __GIT_MESSAGE__ !== 'undefined' ? __GIT_MESSAGE__ : '';
+      document.title = `Photo Factory [${hash}] ${msg.slice(0, 30)}`;
+    });
+  </script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7gy/lpifSzNO8aCjBnN1C9VkWzODzfI4K9r" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" crossorigin="anonymous">
   <style>
