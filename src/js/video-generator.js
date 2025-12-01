@@ -139,8 +139,9 @@ export async function generateMarketingVideo(photos, jobInfo, options = {}) {
           ctx.globalAlpha = 1;
         }
 
-        // Draw text overlay
-        drawTextOverlay(ctx, jobInfo, photoIndex, images.length, width, height);
+        // Draw text overlay with actual photo category
+        const currentPhoto = photos[photoIndex] || {};
+        drawTextOverlay(ctx, jobInfo, photoIndex, images.length, width, height, currentPhoto.category);
 
         // Progress callback
         if (onProgress) {
@@ -210,11 +211,18 @@ function calculateFitDimensions(img, containerWidth, containerHeight) {
  * @param {number} totalPhotos - Total number of photos
  * @param {number} width - Canvas width
  * @param {number} height - Canvas height
+ * @param {string} category - Photo category key
  */
-function drawTextOverlay(ctx, jobInfo, photoIndex, totalPhotos, width, height) {
-  // Category labels
-  const categories = ['입고', '문제', '과정', '해결', '출고'];
-  const currentCategory = categories[photoIndex] || '';
+function drawTextOverlay(ctx, jobInfo, photoIndex, totalPhotos, width, height, category) {
+  // Category labels mapping
+  const categoryLabels = {
+    before_car: '입고',
+    before_wheel: '문제',
+    during: '과정',
+    after_wheel: '해결',
+    after_car: '출고'
+  };
+  const currentCategory = categoryLabels[category] || `${photoIndex + 1}/${totalPhotos}`;
 
   // Top bar with category
   ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -276,18 +284,16 @@ export function downloadVideo(blob, filename = 'marketing-video.webm') {
  */
 export async function generateAndDownloadVideo(photos, jobInfo, onProgress) {
   try {
-    // Sort photos by category order
+    // Sort photos by category order, then by sequence within each category
     const categoryOrder = ['before_car', 'before_wheel', 'during', 'after_wheel', 'after_car'];
     const sortedPhotos = [...photos].sort((a, b) => {
-      return categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category);
+      const categoryDiff = categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category);
+      if (categoryDiff !== 0) return categoryDiff;
+      return (a.sequence || 0) - (b.sequence || 0);
     });
 
-    // Take first photo from each category
-    const selectedPhotos = [];
-    for (const category of categoryOrder) {
-      const photo = sortedPhotos.find(p => p.category === category);
-      if (photo) selectedPhotos.push(photo);
-    }
+    // Include ALL photos, not just first from each category
+    const selectedPhotos = sortedPhotos.filter(p => p.image_data || p.thumbnail_data);
 
     if (selectedPhotos.length === 0) {
       throw new Error('No photos available for video generation');
