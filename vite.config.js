@@ -23,7 +23,7 @@ const cspPolicy = [
   "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
   "img-src 'self' data: blob:",
   "font-src 'self' https://cdn.jsdelivr.net",
-  "connect-src 'self'",
+  "connect-src 'self' https://cdn.jsdelivr.net",
   "media-src 'self' blob:",
   "object-src 'none'",
   "frame-ancestors 'none'",
