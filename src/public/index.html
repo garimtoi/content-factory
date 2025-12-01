@@ -126,6 +126,58 @@
       font-size: 0.85rem;
       margin-top: 50px;
     }
+
+    /* QR Code Section */
+    .qr-section {
+      margin-top: 30px;
+      padding: 20px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 15px;
+      display: none;
+    }
+
+    .qr-section.show {
+      display: block;
+    }
+
+    .qr-title {
+      color: rgba(255,255,255,0.9);
+      font-size: 0.9rem;
+      margin-bottom: 15px;
+    }
+
+    .qr-container {
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      display: inline-block;
+    }
+
+    .qr-container canvas {
+      display: block;
+    }
+
+    .network-url {
+      color: rgba(255,255,255,0.7);
+      font-size: 0.75rem;
+      margin-top: 10px;
+      word-break: break-all;
+    }
+
+    .qr-toggle {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.3);
+      color: rgba(255,255,255,0.8);
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+
+    .qr-toggle:hover {
+      background: rgba(255,255,255,0.1);
+    }
   </style>
 </head>
 <body>
@@ -159,6 +211,19 @@
       </div>
     </div>
 
+    <!-- QR Code for Mobile Access -->
+    <button class="qr-toggle" id="qr-toggle">
+      <i class="bi bi-qr-code"></i> 스마트폰으로 접속
+    </button>
+
+    <div class="qr-section" id="qr-section">
+      <p class="qr-title">같은 WiFi에서 스캔하세요</p>
+      <div class="qr-container">
+        <canvas id="qr-canvas"></canvas>
+      </div>
+      <p class="network-url" id="network-url"></p>
+    </div>
+
     <p class="footer-text">
       Offline-First PWA<br>
       v1.0.0
@@ -167,6 +232,7 @@
 
   <script type="module">
     import { db } from '../js/db.js';
+    import QRCode from 'qrcode';
 
     async function loadStats() {
       try {
@@ -179,6 +245,38 @@
         console.error('Failed to load stats:', error);
       }
     }
+
+    // Generate QR code for network access
+    async function generateNetworkQR() {
+      const networkIP = typeof __NETWORK_IP__ !== 'undefined' ? __NETWORK_IP__ : 'localhost';
+      const port = typeof __DEV_PORT__ !== 'undefined' ? __DEV_PORT__ : 6010;
+      const networkUrl = `http://${networkIP}:${port}/`;
+
+      document.getElementById('network-url').textContent = networkUrl;
+
+      try {
+        await QRCode.toCanvas(document.getElementById('qr-canvas'), networkUrl, {
+          width: 150,
+          margin: 1,
+          color: {
+            dark: '#667eea',
+            light: '#ffffff'
+          }
+        });
+      } catch (error) {
+        console.error('Failed to generate QR code:', error);
+      }
+    }
+
+    // Toggle QR section
+    document.getElementById('qr-toggle').addEventListener('click', () => {
+      const section = document.getElementById('qr-section');
+      section.classList.toggle('show');
+
+      if (section.classList.contains('show')) {
+        generateNetworkQR();
+      }
+    });
 
     loadStats();
   </script>

@@ -12,7 +12,8 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
-    "dexie": "^4.0.10"
+    "dexie": "^4.0.10",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0",

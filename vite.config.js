@@ -1,5 +1,20 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
+import os from 'os';
+
+// Get local network IP address
+function getNetworkIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      // Skip internal (127.0.0.1) and non-IPv4
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
 
 // CSP Policy (Content Security Policy)
 const cspPolicy = [
@@ -19,6 +34,11 @@ const cspPolicy = [
 export default defineConfig({
   root: 'src/public',
   publicDir: '../../public',
+  // Inject network IP at build/dev time
+  define: {
+    '__NETWORK_IP__': JSON.stringify(getNetworkIP()),
+    '__DEV_PORT__': JSON.stringify(6010)
+  },
   server: {
     host: '0.0.0.0',
     port: 6010,  // 6000-6009 are blocked by Chrome (X11 protocol)
