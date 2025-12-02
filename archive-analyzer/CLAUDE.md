@@ -14,6 +14,7 @@ Archive Analyzer는 OTT 솔루션을 위한 미디어 아카이브 분석 도구
 # 의존성 설치 (용도별)
 pip install -e ".[dev,media]"        # 개발 + 미디어 분석
 pip install -e ".[dev,media,search]" # 전체 (MeiliSearch 포함)
+pip install -e ".[all]"              # 전체 (auth, admin 포함)
 
 # 테스트 실행
 pytest tests/ -v
@@ -29,6 +30,16 @@ pytest tests/test_media_extractor.py::test_ffprobe_extract -v
 ruff check src/
 black --check src/
 mypy src/archive_analyzer/
+```
+
+## CLI
+
+```powershell
+# 설치 후 CLI 사용
+archive-analyzer --help
+
+# 또는 모듈로 직접 실행
+python -m archive_analyzer.cli
 ```
 
 ## Architecture
@@ -100,16 +111,17 @@ python scripts/test_smb.py                    # SMB 연결 테스트
 
 ## Configuration
 
-SMB 연결 설정은 환경변수 또는 JSON 파일로 관리:
+환경변수 또는 JSON 파일로 설정 관리:
 
-```bash
-# 환경변수
-SMB_SERVER=10.10.100.122
-SMB_SHARE=docker
-SMB_USERNAME=GGP
-SMB_PASSWORD=****
-ARCHIVE_PATH=GGPNAs/ARCHIVE
-```
+| 카테고리 | 변수 | 용도 |
+|----------|------|------|
+| **SMB** | `SMB_SERVER`, `SMB_SHARE`, `SMB_USERNAME`, `SMB_PASSWORD` | NAS 연결 |
+| **SMB** | `ARCHIVE_PATH` | 아카이브 경로 (기본: `GGPNAs/ARCHIVE`) |
+| **Search** | `MEILISEARCH_URL` | MeiliSearch 서버 (기본: `http://localhost:7700`) |
+| **Sheets** | `CREDENTIALS_PATH`, `SPREADSHEET_ID` | Google Sheets 동기화 |
+| **Sheets** | `SYNC_INTERVAL`, `DB_PATH` | 동기화 간격(초), DB 경로 |
+| **OAuth** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth 인증 |
+| **Admin** | `ADMIN_EMAILS` | 관리자 이메일 목록 |
 
 ```python
 # 코드에서 로드
@@ -294,15 +306,6 @@ docker-compose -f docker-compose.sync.yml up -d
 docker logs -f sheets-sync
 ```
 
-### 환경변수 (Google Sheets 동기화)
-
-| 변수 | 용도 | 예시 |
-|------|------|------|
-| `CREDENTIALS_PATH` | GCP 서비스 계정 JSON | `config/gcp-service-account.json` |
-| `SPREADSHEET_ID` | Google Sheets ID | `1TW2ON5CQyIrL8...` |
-| `SYNC_INTERVAL` | 동기화 간격 (초) | `120` |
-| `DB_PATH` | SQLite 경로 | `data/pokervod.db` |
-
 ## Admin (Web UI + Authentication)
 
 ### Network Accessible Server
@@ -310,12 +313,7 @@ docker logs -f sheets-sync
 동일 네트워크의 모든 사용자가 접속할 수 있는 관리 서버입니다.
 
 ```powershell
-# 환경변수 설정 후 실행
-$env:GOOGLE_CLIENT_ID = "your-client-id"
-$env:GOOGLE_CLIENT_SECRET = "your-secret"
-$env:ADMIN_EMAILS = "admin@example.com"
-
-# 관리 서버 시작 (API + DB Manager)
+# 관리 서버 시작 (환경변수 설정 후)
 python scripts/start_admin.py
 ```
 
@@ -359,11 +357,22 @@ python -m sqlite_web d:/AI/claude01/archive-analyzer/data/output/archive.db --ho
 
 ## Roadmap
 
-- **Phase 1: 검색 기능** ✅ (MeiliSearch, FastAPI)
-- **Phase 2: pokervod.db 동기화** ✅ (sync.py, REST API)
-- **Phase 2.5: Admin UI** ✅ (Google OAuth, User Management, sqlite-web)
-- **Phase 2.6: Google Sheets 동기화** ✅ (sheets_sync.py, archive_hands_sync.py, Docker)
-- **Phase 3: AI 기능** (예정) - Whisper 전사, YOLOv8 카드 감지
+| Phase | 상태 | 설명 |
+|-------|------|------|
+| Phase 1: 검색 기능 | ✅ | MeiliSearch, FastAPI |
+| Phase 2: pokervod.db 동기화 | ✅ | sync.py, REST API |
+| Phase 2.5: Admin UI | ✅ | Google OAuth, User Management |
+| Phase 2.6: Google Sheets 동기화 | ✅ | sheets_sync, archive_hands_sync, Docker |
+| Phase 2.7: 멀티 카탈로그 + 추천 스키마 | ✅ | N:N 관계, 10개 테이블 (#11) |
+| Phase 3: AI 기능 | 🔜 | Whisper, YOLOv8, Gorse 연동 |
+
+## Critical Constraints
+
+| 제약 | 설명 |
+|------|------|
+| pokervod.db 스키마 변경 금지 | `qwen_hand_analysis` 소유, 변경 시 협의 필수 |
+| 스키마 문서 동기화 필수 | DB 변경 시 `docs/DATABASE_SCHEMA.md` 업데이트 |
+| FFprobe 필수 | 미디어 추출 기능에 시스템 PATH의 ffprobe 필요 |
 
 ## Documentation
 

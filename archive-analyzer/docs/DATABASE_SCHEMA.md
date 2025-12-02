@@ -938,8 +938,9 @@ def grade_to_stars(score: int) -> str:
 
 ## 8. 추천 시스템 스키마 (Phase 3)
 
-> **Status**: 설계 완료, 구현 예정
+> **Status**: ✅ 스키마 구현 완료 (마이그레이션: `scripts/migrate_recommendation_schema.py`)
 > **목표**: Netflix/Disney+ 스타일 동적 카탈로그 및 개인화 추천
+> **다음 단계**: Gorse 연동, API 엔드포인트 구현
 
 ### 8.1 개요
 
