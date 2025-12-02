@@ -1,7 +1,7 @@
 # Database Schema Documentation
 
 > **Last Updated**: 2025-12-02
-> **Version**: 1.2.0
+> **Version**: 1.4.0
 
 이 문서는 archive-analyzer와 연동 레포지토리 간 DB 스키마를 정의합니다.
 **스키마 변경 시 반드시 이 문서를 업데이트하고 관련 레포에 공유해야 합니다.**
@@ -84,6 +84,9 @@
 | description | TEXT | 설명 |
 | created_at | TIMESTAMP | 생성일시 |
 | updated_at | TIMESTAMP | 수정일시 |
+| **display_title** | VARCHAR(300) | **시청자용 표시 제목** |
+| **title_source** | VARCHAR(20) | **제목 생성 방식 (rule_based/ai_generated/manual)** |
+| **title_verified** | BOOLEAN | **수동 검수 완료 여부** |
 
 #### subcatalogs
 서브 카탈로그 (다단계 계층 구조): 자기 참조를 통한 무제한 깊이 지원
@@ -97,11 +100,22 @@
 | description | TEXT | 설명 |
 | **depth** | INTEGER | **계층 깊이 (1, 2, 3...)** |
 | **path** | TEXT | **전체 경로 (예: wsop/wsop-br/wsop-europe)** |
+| **sub1** | VARCHAR(200) | **1단계 서브카탈로그명** |
+| **sub2** | VARCHAR(200) | **2단계 서브카탈로그명** |
+| **sub3** | VARCHAR(200) | **3단계 서브카탈로그명** |
+| **full_path_name** | VARCHAR(500) | **전체 경로명 (예: WSOP > WSOP-BR > Europe)** |
+| **level1_name** | VARCHAR(200) | **1단계 표시명 (sub1 복사)** |
+| **level2_name** | VARCHAR(200) | **2단계 표시명 (sub2 복사)** |
+| **level3_name** | VARCHAR(200) | **3단계 표시명 (sub3 복사)** |
 | display_order | INTEGER | 표시 순서 |
 | tournament_count | INTEGER | 토너먼트 수 |
 | file_count | INTEGER | 파일 수 |
 | created_at | TIMESTAMP | 생성일시 |
 | updated_at | TIMESTAMP | 수정일시 |
+| search_vector | TEXT | 검색용 벡터 |
+| **display_title** | VARCHAR(300) | **시청자용 표시 제목** |
+| **title_source** | VARCHAR(20) | **제목 생성 방식** |
+| **title_verified** | BOOLEAN | **수동 검수 완료 여부** |
 
 ##### 계층 구조 예시
 
@@ -192,7 +206,18 @@ SELECT * FROM parents ORDER BY depth;
 | fps | FLOAT | 프레임레이트 |
 | bitrate_kbps | INTEGER | 비트레이트 |
 | analysis_status | VARCHAR(20) | 분석 상태 (pending/analyzing/completed/failed) |
+| analysis_error | TEXT | 분석 오류 메시지 |
+| analyzed_at | TIMESTAMP | 분석 일시 |
 | hands_count | INTEGER | 핸드 수 |
+| view_count | INTEGER | 조회수 |
+| last_viewed_at | TIMESTAMP | 마지막 조회 일시 |
+| created_at | TIMESTAMP | 생성일시 |
+| updated_at | TIMESTAMP | 수정일시 |
+| search_vector | TEXT | 검색용 벡터 |
+| **display_title** | VARCHAR(300) | **시청자용 표시 제목** |
+| **display_subtitle** | VARCHAR(300) | **시청자용 부제목** |
+| **title_source** | VARCHAR(20) | **제목 생성 방식 (rule_based/ai_generated/manual)** |
+| **title_verified** | BOOLEAN | **수동 검수 완료 여부** |
 
 #### hands
 핸드: 포커 핸드 정보
@@ -214,6 +239,11 @@ SELECT * FROM parents ORDER BY depth;
 | board | TEXT | 보드 카드 |
 | highlight_score | FLOAT | 하이라이트 점수 |
 | tags | JSON | 태그 |
+| created_at | TIMESTAMP | 생성일시 |
+| search_vector | TEXT | 검색용 벡터 |
+| **display_title** | VARCHAR(300) | **시청자용 표시 제목** |
+| **title_source** | VARCHAR(20) | **제목 생성 방식 (rule_based/ai_generated/manual)** |
+| **title_verified** | BOOLEAN | **수동 검수 완료 여부** |
 
 #### players
 플레이어: 포커 플레이어 정보
@@ -284,8 +314,10 @@ archive-analyzer                              qwen_hand_analysis
 
 | 날짜 | 버전 | 변경 내용 | 영향 범위 |
 |------|------|----------|----------|
+| 2025-12-02 | 1.4.0 | **Archive Team Google Sheet 동기화** 섹션 추가, 태그 정규화 매핑, 워크시트 자동 처리 문서화 | archive_hands_sync.py |
+| 2025-12-02 | 1.3.0 | **display_title 컬럼 추가** (catalogs, subcatalogs, files, hands), title_generator.py 구현 | sheets_sync.py, Google Sheets |
 | 2025-12-02 | 1.2.0 | display_names 테이블, 시청자 친화적 네이밍 설계 | Phase 3 구현 예정 |
-| 2025-12-02 | 1.1.0 | subcatalogs 다단계 구조 (parent_id, depth, path) | sync.py, 마이그레이션 |
+| 2025-12-02 | 1.1.0 | subcatalogs 다단계 구조 (parent_id, depth, path, sub1/sub2/sub3, full_path_name) | sync.py, 마이그레이션 |
 | 2025-12-01 | 1.0.0 | 최초 문서 작성 | - |
 
 ### 3.3 마이그레이션 예시
@@ -676,4 +708,195 @@ SYNONYMS = {
 │ id (PK)     │
 │ filename    │
 └─────────────┘
+```
+
+---
+
+## 7. Archive Team Google Sheet 동기화
+
+### 7.1 개요
+
+아카이브 팀이 핸드 태깅 작업을 수행하는 Google Sheet를 pokervod.db hands 테이블과 동기화합니다.
+
+**스프레드시트**: [Metadata Archive](https://docs.google.com/spreadsheets/d/1_RN_W_ZQclSZA0Iez6XniCXVtjkkd5HNZwiT6l-z6d4)
+
+### 7.2 워크시트 구조
+
+각 워크시트는 하나의 이벤트/파일에 대한 핸드 정보를 포함합니다.
+
+| 행 | 내용 |
+|----|------|
+| 1-2행 | 메타데이터 (무시) |
+| 3행 | 헤더 |
+| 4행~ | 데이터 |
+
+#### 헤더 컬럼 (3행)
+
+| 컬럼 | 타입 | DB 매핑 | 설명 |
+|------|------|---------|------|
+| File No. | INTEGER | `hand_number` | 핸드 번호 |
+| File Name | TEXT | - | 파일명 (매칭용) |
+| Nas Folder Link | TEXT | → `file_id` | NAS 경로 (파일 매칭 키) |
+| In | TIME (H:MM:SS) | `start_sec` | 시작 타임코드 |
+| Out | TIME (H:MM:SS) | `end_sec` | 종료 타임코드 |
+| Hand Grade | TEXT (★~★★★) | `highlight_score` | 하이라이트 등급 (1-3) |
+| Hands | TEXT | `cards_shown` | 공개 카드 (예: "AA vs KK") |
+| Tag (Player) | TEXT (다중) | `players` | 플레이어 태그 (JSON 배열) |
+| Tag (Poker Play) | TEXT (다중) | `tags` | 포커 플레이 태그 (정규화) |
+| Tag (Emotion) | TEXT (다중) | `tags` | 감정 태그 (정규화) |
+
+### 7.3 워크시트 자동 처리
+
+워크시트 수가 **동적으로 증가**합니다. 동기화 스크립트는 모든 워크시트를 자동으로 순회합니다.
+
+```python
+# 모든 워크시트 동기화
+for ws in spreadsheet.worksheets():
+    sync_worksheet(ws.title)
+```
+
+#### 워크시트 명명 규칙
+
+| 패턴 | 예시 |
+|------|------|
+| `{Year} {Event}` | "2024 WSOPC LA" |
+| `{Year} {Series} {Event} {Day}` | "2025 WSOP Main Event Day 1A" |
+
+### 7.4 태그 정규화 매핑
+
+Google Sheet의 태그를 DB 저장용 정규화된 형태로 변환합니다.
+
+#### Poker Play 태그
+
+| 원본 (시트) | 정규화 (DB) |
+|------------|-------------|
+| Preflop All-in | `preflop_allin` |
+| 4-way All-in | `multiway_allin` |
+| Hero Fold | `hero_fold` |
+| Nice Fold | `nice_fold` |
+| Hero Call | `hero_call` |
+| Cooler | `cooler` |
+| Badbeat | `badbeat` |
+| Suckout | `suckout` |
+| Bluff | `bluff` |
+| Epic Hand | `epic_hand` |
+| Crazy Runout | `crazy_runout` |
+| Reversal over Reversal | `reversal` |
+| Quads | `quads` |
+| Straight Flush | `straight_flush` |
+| Royal Flush | `royal_flush` |
+| Flush vs Flush | `flush_vs_flush` |
+| Set over Set | `set_over_set` |
+| KK vs QQ, AA vs KK | `premium_vs_premium` |
+
+#### Emotion 태그
+
+| 원본 (시트) | 정규화 (DB) |
+|------------|-------------|
+| Absurd | `absurd` |
+| Luckbox | `luckbox` |
+| Insane | `insane` |
+| Brutal | `brutal` |
+
+### 7.5 동기화 흐름
+
+```
+┌────────────────────────────────┐
+│  Archive Team Google Sheet     │
+│  (Metadata Archive)            │
+│  ├── 2024 WSOPC LA            │
+│  ├── 2025 WSOP Main Event     │
+│  ├── 2023 WSOP Paradise       │
+│  └── ... (동적 증가)           │
+└────────────────┬───────────────┘
+                 │ archive_hands_sync.py --sync
+                 ▼
+┌────────────────────────────────┐
+│       pokervod.db hands        │
+│  ├── title_source='archive_team'
+│  ├── tags (정규화 JSON)        │
+│  ├── players (JSON 배열)       │
+│  └── highlight_score (1-3)     │
+└────────────────┬───────────────┘
+                 │ sheets_sync.py --daemon
+                 ▼
+┌────────────────────────────────┐
+│   NAS 관리 Google Sheet        │
+│   (pokervod DB Sync)           │
+│   └── hands 워크시트           │
+└────────────────────────────────┘
+```
+
+### 7.6 CLI 사용법
+
+```bash
+# 정방향 동기화 (Archive Sheet → DB)
+python src/archive_analyzer/archive_hands_sync.py --sync
+
+# 역방향 동기화 (DB → Archive Sheet)
+python src/archive_analyzer/archive_hands_sync.py --reverse
+
+# 미리보기 (dry-run)
+python src/archive_analyzer/archive_hands_sync.py --dry-run
+
+# 특정 워크시트만
+python src/archive_analyzer/archive_hands_sync.py --sheet "2024 WSOPC LA" --sync
+```
+
+### 7.7 NAS 경로 → file_id 매칭
+
+워크시트의 `Nas Folder Link` 컬럼으로 DB의 `files.nas_path`와 매칭하여 `file_id`를 찾습니다.
+
+```python
+def find_file_id(nas_path: str, filename: str) -> Optional[str]:
+    # 1. NAS 경로 정규화 후 정확 매칭
+    normalized = normalize_nas_path(nas_path)
+    if normalized in file_mapping:
+        return file_mapping[normalized]
+
+    # 2. 부분 매칭 (폴더 경로)
+    for path, file_id in file_mapping.items():
+        if normalized in path or path in normalized:
+            return file_id
+
+    # 3. 파일명 검색 (fallback)
+    cursor.execute(
+        "SELECT id FROM files WHERE LOWER(filename) LIKE ?",
+        (f"%{filename.lower()}%",)
+    )
+```
+
+### 7.8 타임코드 변환
+
+| 형식 | 변환 |
+|------|------|
+| `H:MM:SS` → `float` | "6:58:55" → 25135.0 |
+| `float` → `H:MM:SS` | 25135.0 → "6:58:55" |
+
+```python
+def parse_timecode(timecode: str) -> float:
+    h, m, s = timecode.split(":")
+    return int(h) * 3600 + int(m) * 60 + float(s)
+
+def seconds_to_timecode(seconds: float) -> str:
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    return f"{h}:{m:02d}:{s:02d}"
+```
+
+### 7.9 Hand Grade 변환
+
+| 시트 | DB |
+|------|-----|
+| ★ | 1 |
+| ★★ | 2 |
+| ★★★ | 3 |
+
+```python
+def parse_hand_grade(grade: str) -> int:
+    return grade.count("★")
+
+def grade_to_stars(score: int) -> str:
+    return "★" * score
 ```

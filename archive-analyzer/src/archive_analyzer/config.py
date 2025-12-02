@@ -9,6 +9,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# =============================================
+# 통합 DB 경로 (환경변수 또는 기본값)
+# =============================================
+SHARED_DB_PATH = os.getenv(
+    "SHARED_DB_PATH",
+    "D:/AI/claude01/qwen_hand_analysis/data/pokervod.db"
+)
+
 
 @dataclass
 class SMBConfig:
@@ -44,7 +52,7 @@ class AnalyzerConfig:
     """분석기 전체 설정"""
     smb: SMBConfig
     archive_path: str = ""
-    database_path: str = "archive.db"
+    database_path: str = SHARED_DB_PATH  # 통합 pokervod.db 사용
     log_level: str = "INFO"
     parallel_workers: int = 4
     batch_size: int = 100
@@ -65,7 +73,7 @@ class AnalyzerConfig:
         return cls(
             smb=smb,
             archive_path=os.getenv("ARCHIVE_PATH", "GGPNAs/ARCHIVE"),
-            database_path=os.getenv("DATABASE_PATH", "archive.db"),
+            database_path=os.getenv("DATABASE_PATH", SHARED_DB_PATH),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             parallel_workers=int(os.getenv("PARALLEL_WORKERS", "4")),
         )
@@ -82,7 +90,7 @@ class AnalyzerConfig:
         return cls(
             smb=smb,
             archive_path=data.get('archive_path', "GGPNAs/ARCHIVE"),
-            database_path=data.get('database_path', "archive.db"),
+            database_path=data.get('database_path', SHARED_DB_PATH),
             log_level=data.get('log_level', "INFO"),
             parallel_workers=data.get('parallel_workers', 4),
             batch_size=data.get('batch_size', 100),
@@ -130,7 +138,7 @@ def create_default_config() -> AnalyzerConfig:
     return AnalyzerConfig(
         smb=smb,
         archive_path="GGPNAs/ARCHIVE",
-        database_path="archive.db",
+        database_path=SHARED_DB_PATH,
         log_level="INFO",
         parallel_workers=4,
         batch_size=100,
