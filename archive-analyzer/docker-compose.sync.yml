@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  sheets-sync:
+    # GitHub Container Registry에서 이미지 가져오기
+    # 로컬 빌드 시: build: . 로 변경
+    image: ghcr.io/garimto81/archive-analyzer/sheets-sync:latest
+    container_name: sheets-sync
+    restart: unless-stopped
+
+    environment:
+      # Google Sheets 설정
+      - SPREADSHEET_ID=1TW2ON5CQyIrL8aGQNYJ4OWkbZMaGmY9DoDG9VFXU60I
+      - SYNC_INTERVAL=120
+
+      # 경로 설정 (컨테이너 내부)
+      - DB_PATH=/data/pokervod.db
+      - CREDENTIALS_PATH=/config/gcp-service-account.json
+
+    volumes:
+      # SQLite 데이터베이스
+      - ./data:/data
+
+      # GCP 서비스 계정 인증 파일
+      - ./config:/config:ro
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    labels:
+      - "com.centurylinklabs.watchtower.scope=sheets-sync"
+
+  # Watchtower: 이미지 업데이트 자동 감지 및 재배포
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    environment:
+      # 5분마다 업데이트 체크
+      - WATCHTOWER_POLL_INTERVAL=300
+      # 오래된 이미지 자동 삭제
+      - WATCHTOWER_CLEANUP=true
+
+    command: --scope sheets-sync
+
+    labels:
+      - "com.centurylinklabs.watchtower.scope=sheets-sync"

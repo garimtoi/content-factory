@@ -35,16 +35,19 @@ mypy src/archive_analyzer/
 
 ```
 src/archive_analyzer/
-├── config.py           # SMBConfig, AnalyzerConfig (환경변수/JSON 로드)
-├── smb_connector.py    # SMB 2/3 네트워크 연결 (smbprotocol 기반)
-├── file_classifier.py  # 파일 유형 분류 (video, audio, subtitle, metadata)
-├── scanner.py          # 재귀 디렉토리 스캔, 체크포인트 기반 재개
-├── database.py         # SQLite 저장 (6개 테이블)
-├── media_extractor.py  # FFprobe 기반 메타데이터 추출
-├── report_generator.py # Markdown/JSON/Console 리포트 생성
-├── search.py           # MeiliSearch 인덱싱/검색 서비스
-├── sync.py             # pokervod.db 동기화 모듈
-└── api.py              # FastAPI REST API (검색/동기화)
+├── config.py             # SMBConfig, AnalyzerConfig (환경변수/JSON 로드)
+├── smb_connector.py      # SMB 2/3 네트워크 연결 (smbprotocol 기반)
+├── file_classifier.py    # 파일 유형 분류 (video, audio, subtitle, metadata)
+├── scanner.py            # 재귀 디렉토리 스캔, 체크포인트 기반 재개
+├── database.py           # SQLite 저장 (6개 테이블)
+├── media_extractor.py    # FFprobe 기반 메타데이터 추출
+├── report_generator.py   # Markdown/JSON/Console 리포트 생성
+├── search.py             # MeiliSearch 인덱싱/검색 서비스
+├── sync.py               # pokervod.db 동기화 모듈
+├── sheets_sync.py        # Google Sheets ↔ SQLite 양방향 동기화
+├── archive_hands_sync.py # 아카이브 팀 시트 → hands 테이블 동기화
+├── title_generator.py    # 시청자용 제목 자동 생성 (규칙 기반)
+└── api.py                # FastAPI REST API (검색/동기화)
 ```
 
 ### 데이터 흐름
@@ -55,6 +58,8 @@ src/archive_analyzer/
 4. `ReportGenerator` → 통계 집계, 스트리밍 적합성 평가
 5. `SearchService` → MeiliSearch 인덱싱/검색
 6. `SyncService` → pokervod.db 동기화
+7. `SheetsSyncService` → Google Sheets 양방향 동기화
+8. `ArchiveHandsSync` → 아카이브 팀 시트 → hands 테이블
 
 ### 주요 클래스
 
@@ -67,6 +72,9 @@ src/archive_analyzer/
 | `ReportGenerator` | DB 쿼리 → 리포트 생성 | `report_generator.py` |
 | `SearchService` | MeiliSearch 검색 API | `search.py` |
 | `SyncService` | archive.db → pokervod.db 동기화 | `sync.py` |
+| `SheetsSyncService` | Google Sheets ↔ SQLite 양방향 동기화 | `sheets_sync.py` |
+| `ArchiveHandsSync` | 아카이브 팀 시트 → hands 동기화 | `archive_hands_sync.py` |
+| `TitleGenerator` | 규칙 기반 시청자용 제목 생성 | `title_generator.py` |
 
 ## Key Scripts
 
@@ -147,6 +155,7 @@ clip_metadata.hand_grade ───────────→ hands.tags (JSON)
 - **Python**: 3.10+ 필수
 - **smbprotocol**: SMB 2/3 네트워크 접근
 - **rapidfuzz**: 파일명 퍼지 매칭 (클립 매칭용)
+- **gspread**: Google Sheets API 클라이언트 (동기화 모듈)
 
 ## Streaming Compatibility
 
@@ -244,10 +253,116 @@ python scripts/sync_to_pokervod.py --catalogs-only
 
 마이그레이션 스크립트: `scripts/migrate_subcatalogs_v2.py`
 
+## Google Sheets 동기화
+
+### 양방향 동기화 (sheets_sync.py)
+
+```powershell
+# 초기 동기화 (DB → Sheet)
+python -m archive_analyzer.sheets_sync --init
+
+# 양방향 동기화 실행
+python -m archive_analyzer.sheets_sync --sync
+
+# 백그라운드 데몬 모드
+python -m archive_analyzer.sheets_sync --daemon
+```
+
+### 아카이브 팀 Hands 동기화 (archive_hands_sync.py)
+
+```powershell
+# 동기화 실행
+python -m archive_analyzer.archive_hands_sync --sync
+
+# Dry-run (미리보기)
+python -m archive_analyzer.archive_hands_sync --dry-run
+
+# 데몬 모드 (기본 1시간 간격)
+python -m archive_analyzer.archive_hands_sync --daemon
+
+# 30분 간격 데몬
+python -m archive_analyzer.archive_hands_sync --daemon --interval 1800
+```
+
+### Docker 동기화 서비스
+
+```powershell
+# 동기화 서비스 시작 (Watchtower 자동 업데이트 포함)
+docker-compose -f docker-compose.sync.yml up -d
+
+# 로그 확인
+docker logs -f sheets-sync
+```
+
+### 환경변수 (Google Sheets 동기화)
+
+| 변수 | 용도 | 예시 |
+|------|------|------|
+| `CREDENTIALS_PATH` | GCP 서비스 계정 JSON | `config/gcp-service-account.json` |
+| `SPREADSHEET_ID` | Google Sheets ID | `1TW2ON5CQyIrL8...` |
+| `SYNC_INTERVAL` | 동기화 간격 (초) | `120` |
+| `DB_PATH` | SQLite 경로 | `data/pokervod.db` |
+
+## Admin (Web UI + Authentication)
+
+### Network Accessible Server
+
+동일 네트워크의 모든 사용자가 접속할 수 있는 관리 서버입니다.
+
+```powershell
+# 환경변수 설정 후 실행
+$env:GOOGLE_CLIENT_ID = "your-client-id"
+$env:GOOGLE_CLIENT_SECRET = "your-secret"
+$env:ADMIN_EMAILS = "admin@example.com"
+
+# 관리 서버 시작 (API + DB Manager)
+python scripts/start_admin.py
+```
+
+### URLs (Network Access)
+
+서버 IP: `10.10.100.74` (자동 감지)
+
+| URL | Description |
+|-----|-------------|
+| `http://10.10.100.74:8000/admin/` | Admin Dashboard |
+| `http://10.10.100.74:8000/auth/login` | Google OAuth Login |
+| `http://10.10.100.74:8000/admin/db` | Database Manager |
+| `http://10.10.100.74:8000/docs` | API Documentation |
+| `http://10.10.100.74:8088` | pokervod.db (Direct) |
+| `http://10.10.100.74:8089` | archive.db (Direct) |
+
+### User Roles
+
+| Role | Permissions |
+|------|-------------|
+| `pending` | Awaiting approval |
+| `viewer` | Read-only access |
+| `editor` | Read/Write access |
+| `admin` | Full access + user management |
+
+### Google Cloud Console Setup
+
+1. https://console.cloud.google.com/apis/credentials
+2. Create OAuth 2.0 Client ID (Web application)
+3. Add redirect URI: `http://10.10.100.74:8000/auth/callback`
+
+### Direct DB Access (without auth)
+
+```powershell
+# pokervod.db
+python -m sqlite_web d:/AI/claude01/qwen_hand_analysis/data/pokervod.db --host 0.0.0.0 --port 8088
+
+# archive.db
+python -m sqlite_web d:/AI/claude01/archive-analyzer/data/output/archive.db --host 0.0.0.0 --port 8089
+```
+
 ## Roadmap
 
 - **Phase 1: 검색 기능** ✅ (MeiliSearch, FastAPI)
 - **Phase 2: pokervod.db 동기화** ✅ (sync.py, REST API)
+- **Phase 2.5: Admin UI** ✅ (Google OAuth, User Management, sqlite-web)
+- **Phase 2.6: Google Sheets 동기화** ✅ (sheets_sync.py, archive_hands_sync.py, Docker)
 - **Phase 3: AI 기능** (예정) - Whisper 전사, YOLOv8 카드 감지
 
 ## Documentation
@@ -255,6 +370,7 @@ python scripts/sync_to_pokervod.py --catalogs-only
 | 문서 | 설명 |
 |------|------|
 | `docs/DATABASE_SCHEMA.md` | DB 스키마 및 연동 관계 (스키마 변경 시 필수 업데이트) |
+| `docs/DATABASE_SCHEMA_V2.md` | V2 스키마 설계 (단순화된 계층 구조) |
 | `docs/archive_structure.md` | 아카이브 폴더 구조 및 태그 스키마 |
 | `docs/MAM_SOLUTIONS_RESEARCH.md` | 오픈소스 MAM 솔루션 비교 |
 | `docs/MAM_ARCHITECTURE_PATTERNS.md` | Self-hosted 아키텍처 패턴 |

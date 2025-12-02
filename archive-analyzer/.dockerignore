@@ -1,0 +1,61 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+.eggs
+*.egg
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Virtual environments
+venv
+.venv
+env
+.env
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+build
+dist
+*.whl
+
+# Documentation
+docs
+*.md
+!README.md
+
+# Tests
+tests
+test_*
+
+# Data files (mount via volumes)
+data/*.db
+*.sqlite
+*.sqlite3
+
+# Config files with secrets
+config/*.json
+!config/example-*.json
+
+# Scripts not needed in container
+scripts
+*.bat
+*.ps1
+
+# Other
+.DS_Store
+Thumbs.db
+*.log

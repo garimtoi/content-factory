@@ -1,6 +1,7 @@
 """FastAPI 기반 검색 API
 
 MeiliSearch를 통한 파일/미디어/클립 검색 REST API를 제공합니다.
+인증은 NocoDB를 통해 별도로 관리됩니다.
 
 실행:
     uvicorn archive_analyzer.api:app --reload --port 8000
@@ -12,6 +13,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .search import (
@@ -57,6 +59,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 # Response Models
