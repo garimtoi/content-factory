@@ -5,7 +5,12 @@
 Usage:
     python -m archive_analyzer.archive_hands_sync --sync
     python -m archive_analyzer.archive_hands_sync --dry-run
+    python -m archive_analyzer.archive_hands_sync --daemon            # 1시간 간격
+    python -m archive_analyzer.archive_hands_sync --daemon --interval 1800  # 30분 간격
 """
+
+import time
+from datetime import datetime
 
 import os
 import re
@@ -28,6 +33,7 @@ class ArchiveSyncConfig:
     credentials_path: str = None
     archive_spreadsheet_id: str = "1_RN_W_ZQclSZA0Iez6XniCXVtjkkd5HNZwiT6l-z6d4"
     db_path: str = None
+    sync_interval_seconds: int = 3600  # 기본 1시간
 
     def __post_init__(self):
         if self.credentials_path is None:
@@ -386,6 +392,29 @@ class ArchiveHandsSync:
         """연결 종료"""
         self.conn.close()
 
+    def run_daemon(self):
+        """백그라운드 동기화 서비스 실행 (기본 1시간 간격)"""
+        interval = self.config.sync_interval_seconds
+        print(f"Starting archive hands sync daemon (interval: {interval}s = {interval//60}min)")
+        print("Press Ctrl+C to stop")
+        print()
+
+        try:
+            while True:
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"\n[{now}] Running sync...")
+
+                try:
+                    stats = self.sync_all(dry_run=False)
+                    print(f"[{now}] Sync completed: {stats['inserted']} hands")
+                except Exception as e:
+                    print(f"[{now}] Sync error: {e}")
+
+                print(f"[{now}] Next sync in {interval//60} minutes...")
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            print("\nDaemon stopped.")
+
     # =============================================
     # Reverse Sync (DB → Sheet)
     # =============================================
@@ -665,14 +694,19 @@ def main():
     parser.add_argument("--reverse", action="store_true", help="Sync DB to archive sheets (reverse)")
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing")
     parser.add_argument("--sheet", type=str, help="Sync specific worksheet only")
+    parser.add_argument("--daemon", action="store_true", help="Run as background daemon")
+    parser.add_argument("--interval", type=int, default=3600, help="Sync interval in seconds (default: 3600 = 1hr)")
 
     args = parser.parse_args()
 
-    config = ArchiveSyncConfig()
+    config = ArchiveSyncConfig(sync_interval_seconds=args.interval)
     sync = ArchiveHandsSync(config)
 
     try:
-        if args.reverse:
+        if args.daemon:
+            # 데몬 모드
+            sync.run_daemon()
+        elif args.reverse:
             # 역방향 동기화 (DB → Sheet)
             if args.sheet:
                 stats = sync.reverse_sync_worksheet(args.sheet, dry_run=args.dry_run)

@@ -58,8 +58,8 @@ class SyncConfig:
     # Database
     db_path: str = None
 
-    # Sync settings (120초 = 2분 - API 60req/min 한도 대응)
-    sync_interval_seconds: int = 120
+    # Sync settings (300초 = 5분 - API 60req/min 한도 대응)
+    sync_interval_seconds: int = 300
     tables_to_sync: List[str] = None
 
     def __post_init__(self):
@@ -92,8 +92,8 @@ class SyncConfig:
                 self.tables_to_sync = [t.strip() for t in env_tables.split(",")]
             else:
                 # 동기화할 테이블 목록 (편집이 필요한 테이블)
+                # Note: display_names 테이블 제거됨 (display_title은 각 테이블에 직접 저장)
                 self.tables_to_sync = [
-                    "display_names",
                     "catalogs",
                     "subcatalogs",
                     "players",
@@ -534,7 +534,6 @@ class SheetsSyncService:
 
         Google Sheets에서 sub1, sub2, sub3만 수정하면:
         - full_path_name: 자동 생성
-        - level1_name, level2_name, level3_name: sub1/sub2/sub3에서 복사
         - depth: 자동 계산
         """
         # catalog 이름 가져오기
@@ -549,11 +548,6 @@ class SheetsSyncService:
         # full_path_name 자동 계산
         parts = [p for p in [catalog_name, sub1, sub2, sub3] if p]
         record["full_path_name"] = " > ".join(parts) if parts else ""
-
-        # level 필드 동기화 (하위 호환)
-        record["level1_name"] = sub1 if sub1 else None
-        record["level2_name"] = sub2 if sub2 else None
-        record["level3_name"] = sub3 if sub3 else None
 
         # depth 자동 계산
         if sub3:

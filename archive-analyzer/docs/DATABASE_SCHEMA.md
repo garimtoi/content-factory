@@ -1,7 +1,7 @@
 # Database Schema Documentation
 
 > **Last Updated**: 2025-12-02
-> **Version**: 1.4.0
+> **Version**: 1.5.0
 
 이 문서는 archive-analyzer와 연동 레포지토리 간 DB 스키마를 정의합니다.
 **스키마 변경 시 반드시 이 문서를 업데이트하고 관련 레포에 공유해야 합니다.**
@@ -104,9 +104,6 @@
 | **sub2** | VARCHAR(200) | **2단계 서브카탈로그명** |
 | **sub3** | VARCHAR(200) | **3단계 서브카탈로그명** |
 | **full_path_name** | VARCHAR(500) | **전체 경로명 (예: WSOP > WSOP-BR > Europe)** |
-| **level1_name** | VARCHAR(200) | **1단계 표시명 (sub1 복사)** |
-| **level2_name** | VARCHAR(200) | **2단계 표시명 (sub2 복사)** |
-| **level3_name** | VARCHAR(200) | **3단계 표시명 (sub3 복사)** |
 | display_order | INTEGER | 표시 순서 |
 | tournament_count | INTEGER | 토너먼트 수 |
 | file_count | INTEGER | 파일 수 |
@@ -314,6 +311,7 @@ archive-analyzer                              qwen_hand_analysis
 
 | 날짜 | 버전 | 변경 내용 | 영향 범위 |
 |------|------|----------|----------|
+| 2025-12-02 | 1.5.0 | **스키마 정리**: display_names 테이블 폐기 (display_title은 각 테이블에 직접 저장), subcatalogs에서 level1/2/3_name 컬럼 제거 (sub1/2/3와 중복) | sheets_sync.py, pokervod.db |
 | 2025-12-02 | 1.4.0 | **Archive Team Google Sheet 동기화** 섹션 추가, 태그 정규화 매핑, 워크시트 자동 처리 문서화 | archive_hands_sync.py |
 | 2025-12-02 | 1.3.0 | **display_title 컬럼 추가** (catalogs, subcatalogs, files, hands), title_generator.py 구현 | sheets_sync.py, Google Sheets |
 | 2025-12-02 | 1.2.0 | display_names 테이블, 시청자 친화적 네이밍 설계 | Phase 3 구현 예정 |
@@ -526,26 +524,19 @@ Current archive uses **internal management folder/file naming conventions** whic
 | Insufficient info | `main_event.mp4` | Add specific descriptions |
 | Technical terms | `D1A`, `FT` | Viewer-understandable expressions |
 
-### 6.2 Display Names Table
+### 6.2 Display Title 저장 방식
 
-#### display_names (New)
-Separate management of viewer-facing names
+> **Note (v1.5.0)**: `display_names` 테이블은 **폐기**되었습니다.
+> 대신 `display_title`, `title_source`, `title_verified` 컬럼이 각 엔티티 테이블
+> (catalogs, subcatalogs, files, hands)에 직접 저장됩니다.
+
+#### 각 테이블의 display_title 관련 컬럼
 
 | Column | Type | Description |
 |--------|------|-------------|
-| id | INTEGER PK | Unique identifier |
-| entity_type | VARCHAR(20) | Target type: `catalog`, `subcatalog`, `tournament`, `event`, `file` |
-| entity_id | VARCHAR(200) | Target ID (FK) |
-| display_name | VARCHAR(500) | Viewer display name |
-| display_name_ko | VARCHAR(500) | Korean display name |
-| short_name | VARCHAR(100) | Short name (for UI space constraints) |
-| description | TEXT | Content description |
-| description_ko | TEXT | Korean description |
-| source_type | VARCHAR(20) | Name source: `manual`, `ai_generated`, `rule_based` |
-| confidence | FLOAT | AI generation confidence (0.0~1.0) |
-| verified | BOOLEAN | Review completed flag |
-| created_at | TIMESTAMP | Created datetime |
-| updated_at | TIMESTAMP | Updated datetime |
+| display_title | VARCHAR(300) | 시청자용 표시 제목 |
+| title_source | VARCHAR(20) | 제목 생성 방식: `manual`, `ai_generated`, `rule_based`, `archive_team` |
+| title_verified | BOOLEAN | 수동 검수 완료 여부 |
 
 ### 6.3 Catalog Display Name Mapping
 
@@ -683,31 +674,56 @@ SYNONYMS = {
 }
 ```
 
-### 6.7 Updated ERD
+### 6.7 Updated ERD (v1.5.0)
+
+> display_names 테이블 폐기 후, display_title은 각 테이블에 직접 저장됩니다.
 
 ```
-┌─────────────┐     ┌──────────────────┐
-│  catalogs   │────<│   display_names  │
-│─────────────│     │──────────────────│
-│ id (PK)     │     │ id (PK)          │
-│ name        │     │ entity_type      │
-└─────────────┘     │ entity_id (FK)   │
-       │            │ display_name     │
-       │            │ display_name_ko  │
-┌──────────────┐    │ short_name       │
-│ subcatalogs  │───<│ description      │
-│──────────────│    │ source_type      │
-│ id (PK)      │    │ confidence       │
-│ catalog_id   │    │ verified         │
-└──────────────┘    └──────────────────┘
-       │
-       ▼
-┌─────────────┐
-│    files    │────< display_names
-│─────────────│
-│ id (PK)     │
-│ filename    │
-└─────────────┘
+┌─────────────────────────┐
+│       catalogs          │
+│─────────────────────────│
+│ id (PK)                 │
+│ name                    │
+│ display_title           │  ← 시청자용 제목
+│ title_source            │
+│ title_verified          │
+└─────────────────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│      subcatalogs        │
+│─────────────────────────│
+│ id (PK)                 │
+│ catalog_id (FK)         │
+│ sub1, sub2, sub3        │
+│ display_title           │  ← 시청자용 제목
+│ title_source            │
+│ title_verified          │
+└─────────────────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│         files           │
+│─────────────────────────│
+│ id (PK)                 │
+│ filename                │
+│ nas_path                │
+│ display_title           │  ← 시청자용 제목
+│ display_subtitle        │
+│ title_source            │
+│ title_verified          │
+└─────────────────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│         hands           │
+│─────────────────────────│
+│ id (PK)                 │
+│ file_id (FK)            │
+│ display_title           │  ← 시청자용 제목
+│ title_source            │
+│ title_verified          │
+└─────────────────────────┘
 ```
 
 ---
