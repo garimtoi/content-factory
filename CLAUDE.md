@@ -63,6 +63,21 @@ PRE_WORK 승인 후:
    - 문서 수정: 이슈 업데이트 → 직접 커밋 허용
 2. **TDD 순서**: Red → Green → Refactor
 3. **브랜치**: `<type>/issue-<num>-<desc>`
+4. **커밋 타이밍**
+   - 테스트 통과 후 즉시 커밋
+   - 이슈 해결: `fix(scope): Resolve #123 🐛`
+   - 기능 완료: `feat(scope): Add feature ✨`
+   - `/commit` 커맨드 또는 수동 커밋
+   - README.md 수정 시: `version`, `updated` 배지 갱신
+5. **병렬 에이전트 (조건부 자동)**
+
+   | 복잡도 | 기준 | 동작 |
+   |--------|------|------|
+   | 단순 | 파일 ≤2, 변경 <50줄 | 단일 에이전트 |
+   | 중간 | 파일 3-5, 변경 50-200줄 | `/parallel-test` 제안 |
+   | 복잡 | 파일 ≥6, 아키텍처 변경 | `/parallel-dev` 제안 |
+
+   > 복잡도는 PRE_WORK 분석 시 자동 판단. validator는 `haiku` 모델 사용 (비용 최적화)
 
 ### FINAL_CHECK (최종 검증) - 자동
 
@@ -70,7 +85,8 @@ PRE_WORK 승인 후:
 
 1. **E2E 테스트**: Playwright/Cypress 또는 `webapp-testing` 스킬
 2. **100% 통과 필수**: 실패 시 수정 후 재실행 (최대 3회)
-3. **최종 보고서**: 변경사항 + 테스트 결과 + PR 링크
+3. **커밋 & 푸시**: `/commit` → `Closes #<issue>` 포함
+4. **최종 보고서**: 변경사항 + 테스트 결과 + PR 링크
 
 ```
 ## 작업 완료 보고

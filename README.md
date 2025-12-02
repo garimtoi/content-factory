@@ -2,6 +2,8 @@
 
 **Claude Code**를 위한 전역 워크플로우 및 설정 메타 레포지토리입니다.
 
+![Version](https://img.shields.io/badge/version-1.0.0-blue) ![Last Updated](https://img.shields.io/badge/updated-2025--12--02-green)
+
 > **⚠️ 중요**: 이 레포지토리는 실제 제품 코드가 아닌, **개발 방법론(Workflow)**과 **자동화 도구(Scripts)**를 담고 있습니다.
 
 ---
