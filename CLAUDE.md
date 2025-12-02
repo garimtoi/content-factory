@@ -155,8 +155,39 @@ pytest tests/ -v -m unit
 .\scripts\phase-status.ps1
 
 # Bypass 모드
-.\start-claude-bypass.bat
+.\start-claude.bat
 ```
+
+### 서브프로젝트 실행
+
+```powershell
+# archive-analyzer (API 서버)
+cd D:\AI\claude01\archive-analyzer
+pip install -e ".[dev,media,search]"
+uvicorn src.archive_analyzer.api:app --reload --port 8000
+
+# archive-analyzer (Docker 동기화)
+docker-compose -f D:\AI\claude01\archive-analyzer\docker-compose.sync.yml up -d
+
+# MeiliSearch 인덱싱
+python D:\AI\claude01\archive-analyzer\scripts\index_to_meilisearch.py
+
+# pokervod.db 동기화
+python D:\AI\claude01\archive-analyzer\scripts\sync_to_pokervod.py --dry-run
+```
+
+### 환경 변수 (필수)
+
+| 변수 | 용도 | 예시 |
+|------|------|------|
+| `ANTHROPIC_API_KEY` | Claude API | `sk-ant-...` |
+| `GITHUB_TOKEN` | GitHub CLI | `ghp_...` |
+| `SMB_SERVER` | NAS 접속 | `10.10.100.122` |
+| `SMB_USERNAME` / `SMB_PASSWORD` | NAS 인증 | - |
+| `MEILISEARCH_URL` | 검색 서버 | `http://localhost:7700` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth (선택) | - |
+
+> 상세: `archive-analyzer/.env.example`, `.env.example`
 
 **Hooks**: 프롬프트 제출 시 규칙 위반 자동 검사 (`.claude/hooks/`)
 
@@ -177,3 +208,17 @@ pytest tests/ -v -m unit
 1. `webapp-testing` 스킬로 기본 스모크 테스트
 2. 불가 시 "⚠️ E2E 미실행" 경고와 함께 보고
 3. 수동 테스트 계획 포함 필수
+
+---
+
+## 8. Do Not (금지 사항)
+
+| 금지 | 이유 |
+|------|------|
+| ❌ Phase validator 없이 다음 Phase 진행 | 품질 보장 실패 |
+| ❌ 상대 경로 사용 (`./`, `../`) | `D:\AI\claude01\...` 절대 경로 필수 |
+| ❌ E2E 테스트 없이 최종 보고 | 불가 시 "⚠️ E2E 미실행" 경고 필수 |
+| ❌ 영어로 일반 응답 | 기술 용어(code, GitHub)만 영어 |
+| ❌ PR 없이 main 직접 커밋 | 코드 수정은 브랜치 → PR 필수 |
+| ❌ 테스트 없이 구현 완료 처리 | TDD: Red → Green → Refactor |
+| ❌ pokervod.db 스키마 무단 변경 | `qwen_hand_analysis` 소유, 협의 필수 |
