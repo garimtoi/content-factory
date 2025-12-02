@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. **Language**: 한글 출력. 기술 용어(code, GitHub)는 영어.
 2. **Path**: 절대 경로만 사용. `D:\AI\claude01\...`
 3. **Validation**: Phase 검증 필수. 실패 시 STOP.
+4. **Inbox 체크**: 세션 시작 시 `inbox/`에 `processed/`에 없는 파일 있으면 `inbox/IMPROVE_PROCESS.md` 실행.
 
 **Context**: Windows 10/11, PowerShell, Root: `D:\AI\claude01`
 
