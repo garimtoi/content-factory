@@ -181,6 +181,31 @@ CREATE TABLE IF NOT EXISTS tags (
 );
 """
 
+DDL_CATALOGS = """
+CREATE TABLE IF NOT EXISTS catalogs (
+    id INTEGER PRIMARY KEY,
+    slug VARCHAR(50) UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    display_title VARCHAR(200),
+    logo_url TEXT,
+    banner_url TEXT,
+    series_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+DDL_PLAYERS = """
+CREATE TABLE IF NOT EXISTS players (
+    id INTEGER PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    display_name VARCHAR(100),
+    country VARCHAR(50),
+    total_hands INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 # =============================================================================
 # 호환성 뷰
 # =============================================================================
@@ -378,7 +403,9 @@ class V3SchemaMigration:
 
         logger.info("V3.0 테이블 생성 중...")
 
-        # tags 테이블 (content_tags 의존성)
+        # 기반 테이블 (의존성)
+        cursor.executescript(DDL_CATALOGS)
+        cursor.executescript(DDL_PLAYERS)
         cursor.executescript(DDL_TAGS)
 
         # series 테이블
@@ -505,6 +532,31 @@ class V3SchemaMigration:
                 )
                 self.stats["series_created"] += 1
 
+        # 기본 series가 없으면 생성 (episode 마이그레이션용)
+        cursor.execute("SELECT COUNT(*) FROM series")
+        if cursor.fetchone()[0] == 0:
+            # 기본 catalog 확인/생성
+            cursor.execute("SELECT id FROM catalogs LIMIT 1")
+            cat_row = cursor.fetchone()
+            if cat_row:
+                default_catalog_id = cat_row[0]
+            else:
+                cursor.execute(
+                    "INSERT INTO catalogs (id, name) VALUES (1, 'Default')"
+                )
+                default_catalog_id = 1
+
+            # 기본 series 생성
+            cursor.execute(
+                """
+                INSERT INTO series (id, catalog_id, slug, title)
+                VALUES (1, ?, 'default', 'Default Series')
+                """,
+                (default_catalog_id,),
+            )
+            self.stats["series_created"] += 1
+            logger.info("기본 Series 생성됨 (id=1)")
+
         if not self.dry_run:
             self.conn.commit()
 
@@ -521,22 +573,40 @@ class V3SchemaMigration:
 
         logger.info("Episode 마이그레이션 시작...")
 
-        # files 테이블에서 마이그레이션
-        cursor.execute("""
+        # files 테이블 스키마 확인
+        cursor.execute("PRAGMA table_info(files)")
+        columns = {row[1] for row in cursor.fetchall()}
+        has_event_id = "event_id" in columns
+        has_display_title = "display_title" in columns
+
+        # 동적 쿼리 생성
+        select_cols = ["f.id", "f.path", "f.filename", "f.size_bytes"]
+        if has_event_id:
+            select_cols.append("f.event_id")
+        if has_display_title:
+            select_cols.append("f.display_title")
+
+        # media_info 조인
+        query = f"""
             SELECT
-                f.id, f.path, f.filename, f.size_bytes,
-                f.event_id, f.display_title,
+                {', '.join(select_cols)},
                 m.duration_seconds, m.width, m.height, m.video_codec
             FROM files f
             LEFT JOIN media_info m ON f.id = m.file_id
-        """)
+        """
+        cursor.execute(query)
         files = cursor.fetchall()
 
-        for f in files:
+        # 결과를 dict로 변환 (컬럼 이름으로 접근)
+        col_names = [desc[0] for desc in cursor.description]
+
+        for row in files:
+            f = dict(zip(col_names, row))
+
             # series_id 찾기 (event_id 또는 기본값)
             series_id = 1  # 기본값
 
-            if f["event_id"]:
+            if has_event_id and f.get("event_id"):
                 # events → tournaments → series 매핑
                 cursor.execute(
                     """
@@ -547,24 +617,26 @@ class V3SchemaMigration:
                     """,
                     (f["event_id"],),
                 )
-                row = cursor.fetchone()
-                if row:
-                    series_id = row[0]
+                result = cursor.fetchone()
+                if result:
+                    series_id = result[0]
 
             # 해상도 라벨
             resolution = None
-            if f["height"]:
-                if f["height"] >= 2160:
+            height = f.get("height")
+            if height:
+                if height >= 2160:
                     resolution = "4K"
-                elif f["height"] >= 1080:
+                elif height >= 1080:
                     resolution = "1080p"
-                elif f["height"] >= 720:
+                elif height >= 720:
                     resolution = "720p"
                 else:
-                    resolution = f"{f['height']}p"
+                    resolution = f"{height}p"
 
-            headline = f["display_title"] or generate_episode_headline(
-                title=f["filename"]
+            display_title = f.get("display_title") if has_display_title else None
+            headline = display_title or generate_episode_headline(
+                title=f.get("filename", "Episode")
             )
 
             cursor.execute(
@@ -579,12 +651,12 @@ class V3SchemaMigration:
                     series_id,
                     headline,
                     None,  # subline
-                    f["duration_seconds"],
+                    f.get("duration_seconds"),
                     resolution,
-                    f["video_codec"],
-                    f["path"],
-                    f["size_bytes"],
-                    f["id"],
+                    f.get("video_codec"),
+                    f.get("path"),
+                    f.get("size_bytes"),
+                    f.get("id"),
                 ),
             )
             self.stats["episodes_migrated"] += 1
