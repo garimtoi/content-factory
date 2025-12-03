@@ -7,17 +7,17 @@ Issue #3: 아카이브 파일 스캐너 구현
 - 중단 후 재개 기능
 """
 
+import logging
 import os
 import uuid
-import logging
-from datetime import datetime
-from typing import Optional, Iterator, Callable, List
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Callable, List, Optional
 
-from .smb_connector import SMBConnector, FileInfo
-from .file_classifier import classify_file, FileType
-from .database import Database, FileRecord, ScanCheckpoint
 from .config import AnalyzerConfig
+from .database import Database, FileRecord, ScanCheckpoint
+from .file_classifier import classify_file
+from .smb_connector import FileInfo, SMBConnector
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ScanProgress:
     """스캔 진행 상황"""
+
     scan_id: str
     total_files: int
     processed_files: int
@@ -50,6 +51,7 @@ class ScanProgress:
 @dataclass
 class ScanResult:
     """스캔 결과"""
+
     scan_id: str
     total_files: int
     total_size: int
@@ -98,10 +100,7 @@ class ArchiveScanner:
         self._errors: List[str] = []
         self._progress_callback: Optional[Callable[[ScanProgress], None]] = None
 
-    def set_progress_callback(
-        self,
-        callback: Callable[[ScanProgress], None]
-    ) -> None:
+    def set_progress_callback(self, callback: Callable[[ScanProgress], None]) -> None:
         """진행률 콜백 설정"""
         self._progress_callback = callback
 
@@ -155,13 +154,14 @@ class ArchiveScanner:
     def scan(
         self,
         resume_scan_id: Optional[str] = None,
-        count_first: bool = True,
+        count_first: bool = False,  # #39 - 기본값 False로 변경 (이중 스캔 방지)
     ) -> ScanResult:
         """아카이브 스캔 실행
 
         Args:
             resume_scan_id: 재개할 스캔 ID (없으면 새 스캔)
             count_first: 총 파일 수 먼저 카운트 여부
+                        (False 권장 - 네트워크 I/O 절감)
 
         Returns:
             ScanResult 객체
@@ -190,13 +190,15 @@ class ArchiveScanner:
                 self._processed_count = checkpoint.processed_files
                 logger.info(f"Resuming from: {resume_from_path}")
 
-        # 총 파일 수 카운트
+        # 총 파일 수 카운트 (#39 - 기본적으로 스킵하여 이중 스캔 방지)
         if count_first:
-            logger.info("Counting files...")
+            logger.info("Counting files... (네트워크 I/O 추가 발생)")
             self._total_count = self._count_files()
             logger.info(f"Total files to scan: {self._total_count:,}")
         else:
             self._total_count = checkpoint.total_files if checkpoint else 0
+            if self._total_count == 0:
+                logger.info("Scanning without file count (progress percentage unavailable)")
 
         # 체크포인트 생성/업데이트
         if not checkpoint:
@@ -219,11 +221,14 @@ class ArchiveScanner:
                 if info.is_dir:
                     continue
 
-                # 재개 지점까지 건너뛰기
+                # 재개 지점까지 건너뛰기 (#32 - 재개 파일 자체는 처리)
                 if skip_until_resume:
                     if info.path == resume_from_path:
                         skip_until_resume = False
-                    continue
+                        # resume 파일은 이미 처리되었으므로 건너뛰기
+                        continue
+                    else:
+                        continue
 
                 try:
                     # 레코드 생성
@@ -233,9 +238,9 @@ class ArchiveScanner:
                     # 통계 업데이트
                     ft = record.file_type
                     if ft not in stats_by_type:
-                        stats_by_type[ft] = {'count': 0, 'size': 0}
-                    stats_by_type[ft]['count'] += 1
-                    stats_by_type[ft]['size'] += record.size_bytes
+                        stats_by_type[ft] = {"count": 0, "size": 0}
+                    stats_by_type[ft]["count"] += 1
+                    stats_by_type[ft]["size"] += record.size_bytes
 
                     self._processed_count += 1
 
@@ -243,9 +248,7 @@ class ArchiveScanner:
                     if len(batch) >= self.batch_size:
                         self.database.insert_files_batch(batch)
                         self.database.update_checkpoint_progress(
-                            self._scan_id,
-                            info.path,
-                            self._processed_count
+                            self._scan_id, info.path, self._processed_count
                         )
                         batch = []
 
@@ -272,7 +275,7 @@ class ArchiveScanner:
 
         # 결과 생성
         duration = (datetime.now() - self._start_time).total_seconds()
-        total_size = sum(s['size'] for s in stats_by_type.values())
+        total_size = sum(s["size"] for s in stats_by_type.values())
 
         result = ScanResult(
             scan_id=self._scan_id,
@@ -296,9 +299,9 @@ class ArchiveScanner:
             self.connector.connect()
 
         stats = {
-            'total_files': 0,
-            'total_size': 0,
-            'by_type': {},
+            "total_files": 0,
+            "total_size": 0,
+            "by_type": {},
         }
 
         logger.info(f"Quick scanning: {self.archive_path}")
@@ -308,15 +311,15 @@ class ArchiveScanner:
                 continue
 
             file_type = classify_file(info.name).value
-            if file_type not in stats['by_type']:
-                stats['by_type'][file_type] = {'count': 0, 'size': 0}
+            if file_type not in stats["by_type"]:
+                stats["by_type"][file_type] = {"count": 0, "size": 0}
 
-            stats['by_type'][file_type]['count'] += 1
-            stats['by_type'][file_type]['size'] += info.size
-            stats['total_files'] += 1
-            stats['total_size'] += info.size
+            stats["by_type"][file_type]["count"] += 1
+            stats["by_type"][file_type]["size"] += info.size
+            stats["total_files"] += 1
+            stats["total_size"] += info.size
 
-            if stats['total_files'] % 100 == 0:
+            if stats["total_files"] % 100 == 0:
                 logger.debug(f"Scanned {stats['total_files']} files...")
 
         logger.info(f"Quick scan complete: {stats['total_files']:,} files")

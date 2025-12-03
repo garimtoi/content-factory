@@ -1,16 +1,17 @@
 # Database Schema Documentation
 
 > **Last Updated**: 2025-12-03
-> **Version**: 2.5.0
+> **Version**: 3.0.0
 
 이 문서는 archive-analyzer와 연동 레포지토리 간 DB 스키마를 정의합니다.
 **스키마 변경 시 반드시 이 문서를 업데이트하고 관련 레포에 공유해야 합니다.**
 
-### 테이블 요약 (총 34개)
+### 테이블 요약 (총 38개)
 
 | 카테고리 | 테이블 | 설명 |
 |----------|--------|------|
 | **Core** | catalogs, subcatalogs, tournaments, events, files, hands, players, hand_players, hand_tags, id_mapping | 콘텐츠 계층 구조 + 정규화 |
+| **V3.0** | series, contents, content_players, content_tags | Video Card 중심 통합 스키마 (Section 12) |
 | **User** | users, user_sessions, user_preferences, watch_progress, view_events | 사용자 및 시청 기록 |
 | **Recommendation** | recommendation_cache, trending_scores, home_rows, user_home_rows | 추천 시스템 |
 | **Artwork** | artwork_variants, artwork_selections | 썸네일 개인화 |
@@ -1976,10 +1977,438 @@ async def get_collection_items(collection_id: str, limit: int = 50):
 
 ---
 
+## 12. V3.0 스키마 설계 (Video Card 중심)
+
+### 12.1 설계 배경
+
+#### 현재 문제점
+
+1. **5단계 계층 구조의 복잡성**
+   ```
+   catalogs → subcatalogs → tournaments → events → files/hands
+   ```
+   - subcatalogs vs tournaments 역할 중복 (둘 다 연도별 분류)
+   - events 테이블 용도 불명확
+   - 파일 조회 시 5개 테이블 JOIN 필요
+
+2. **Video Card 표시 문제**
+   - 현재: `"Hand #1 | Winner: NEGREANU"` - 기계적, 스토리 없음
+   - 시청자 관심 유발 실패
+   - CTR 최적화 불가
+
+3. **연구 결과** (OTT 플랫폼 분석)
+   - Netflix/YouTube: 3단계 계층 (채널/시리즈/에피소드)
+   - Jellyfin/Kodi: `tvshow → season → episode` 패턴
+   - PokerGO: 토너먼트/시즌 기반 + 클립 하이라이트
+
+### 12.2 제안: 3단계 계층 구조
+
+```
+catalogs → series → contents
+   ↓         ↓         ↓
+ 브랜드    시리즈    콘텐츠(에피소드+클립)
+```
+
+#### 핵심 변경
+
+| 현재 | V3.0 | 설명 |
+|------|------|------|
+| catalogs | catalogs | 유지 (WSOP, HCL, PAD) |
+| subcatalogs + tournaments + events | **series** | 통합 (연도/시즌/이벤트) |
+| files + hands | **contents** | 통합 (에피소드/클립 구분) |
+
+### 12.3 새로운 테이블 정의
+
+#### 12.3.1 catalogs (간소화)
+
+```sql
+CREATE TABLE catalogs (
+    id INTEGER PRIMARY KEY,
+    slug VARCHAR(50) UNIQUE NOT NULL,        -- 'wsop', 'hcl', 'pad'
+    name VARCHAR(100) NOT NULL,              -- 'World Series of Poker'
+    display_title VARCHAR(200),              -- 카드 표시용
+    logo_url TEXT,
+    banner_url TEXT,
+    series_count INTEGER DEFAULT 0,          -- 캐시된 시리즈 수
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### 12.3.2 series (통합)
+
+subcatalogs + tournaments + events를 하나로 통합:
+
+```sql
+CREATE TABLE series (
+    id INTEGER PRIMARY KEY,
+    catalog_id INTEGER NOT NULL REFERENCES catalogs(id),
+    slug VARCHAR(100) UNIQUE NOT NULL,       -- 'wsop-main-event-2024'
+
+    -- 표시 정보
+    title VARCHAR(300) NOT NULL,             -- 'WSOP Main Event 2024'
+    subtitle VARCHAR(200),                   -- '$10,000 No-Limit Hold'em'
+    description TEXT,
+
+    -- 분류 정보
+    year INTEGER,                            -- 2024
+    season INTEGER,                          -- 시즌 번호 (HCL S12 등)
+    location VARCHAR(100),                   -- 'Las Vegas'
+    event_type VARCHAR(50),                  -- 'main_event', 'side_event', 'cash_game'
+
+    -- 메타 정보
+    thumbnail_url TEXT,
+    banner_url TEXT,
+    episode_count INTEGER DEFAULT 0,         -- 캐시된 에피소드 수
+    clip_count INTEGER DEFAULT 0,            -- 캐시된 클립 수
+    total_duration_sec FLOAT DEFAULT 0,      -- 총 재생 시간
+
+    -- 정렬/표시
+    sort_order INTEGER DEFAULT 0,
+    is_featured BOOLEAN DEFAULT FALSE,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_series_catalog ON series(catalog_id);
+CREATE INDEX idx_series_year ON series(year);
+CREATE INDEX idx_series_featured ON series(is_featured);
+```
+
+#### 12.3.3 contents (통합)
+
+files + hands를 단일 테이블로 통합 (content_type으로 구분):
+
+```sql
+CREATE TABLE contents (
+    id INTEGER PRIMARY KEY,
+    series_id INTEGER NOT NULL REFERENCES series(id),
+    content_type VARCHAR(20) NOT NULL,       -- 'episode' | 'clip'
+
+    -- Video Card 핵심 필드 (스토리텔링)
+    headline VARCHAR(300) NOT NULL,          -- "Negreanu의 역대급 블러프"
+    subline VARCHAR(300),                    -- "Main Event Day 7 | $2.5M Pot"
+    thumbnail_url TEXT,
+    thumbnail_text VARCHAR(50),              -- 썸네일 오버레이 텍스트 (0-3 단어)
+
+    -- 미디어 정보
+    duration_sec FLOAT,
+    resolution VARCHAR(20),                  -- '1080p', '4K'
+    codec VARCHAR(50),
+
+    -- 표시 요소
+    featured_text VARCHAR(200),              -- "역대 최대 팟" 배지
+    badges JSON,                             -- ["FINAL TABLE", "ALL-IN"]
+
+    -- Episode 전용 필드
+    episode_number INTEGER,                  -- 에피소드 번호
+    hand_count INTEGER,                      -- 포함된 핸드 수
+
+    -- Clip 전용 필드
+    parent_episode_id INTEGER REFERENCES contents(id),
+    start_sec FLOAT,                         -- 클립 시작 시간
+    end_sec FLOAT,                           -- 클립 종료 시간
+    winner VARCHAR(100),                     -- 승자
+    pot_size_bb FLOAT,                       -- 팟 크기 (BB 단위)
+    action_type VARCHAR(50),                 -- 'bluff', 'hero_call', 'cooler', 'bad_beat'
+
+    -- 파일 참조
+    nas_path TEXT UNIQUE,                    -- NAS 파일 경로
+    file_size_bytes BIGINT,
+
+    -- 통계
+    view_count INTEGER DEFAULT 0,
+    like_count INTEGER DEFAULT 0,
+
+    -- 시간 정보
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_content_type CHECK (content_type IN ('episode', 'clip'))
+);
+
+CREATE INDEX idx_contents_series ON contents(series_id);
+CREATE INDEX idx_contents_type ON contents(content_type);
+CREATE INDEX idx_contents_action ON contents(action_type);
+CREATE INDEX idx_contents_winner ON contents(winner);
+```
+
+#### 12.3.4 content_players (N:N 링크)
+
+Kodi 패턴 적용 - 콘텐츠와 플레이어 다대다 관계:
+
+```sql
+CREATE TABLE content_players (
+    content_id INTEGER NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
+    player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+    role VARCHAR(50) DEFAULT 'participant',  -- 'winner', 'loser', 'participant'
+    position INTEGER,                         -- 표시 순서
+    PRIMARY KEY (content_id, player_id)
+);
+
+CREATE INDEX idx_content_players_player ON content_players(player_id);
+```
+
+#### 12.3.5 content_tags (N:N 링크)
+
+```sql
+CREATE TABLE content_tags (
+    content_id INTEGER NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (content_id, tag_id)
+);
+
+CREATE INDEX idx_content_tags_tag ON content_tags(tag_id);
+```
+
+### 12.4 Headline 생성 규칙
+
+Video Card의 핵심은 **스토리텔링 기반 헤드라인**입니다.
+
+#### 12.4.1 액션 타입별 템플릿
+
+```python
+HEADLINE_TEMPLATES = {
+    'bluff': [
+        "{winner}의 역대급 블러프",
+        "{winner}, 에어로 {pot}BB 스틸",
+        "과감한 블러프! {winner}의 승부수",
+    ],
+    'hero_call': [
+        "{winner}의 소름돋는 히어로콜",
+        "믿기 힘든 콜! {winner}의 직감",
+        "{winner}, 블러프 간파하다",
+    ],
+    'bad_beat': [
+        "{loser}의 악몽 같은 순간",
+        "99% 승률에서 역전당한 {loser}",
+        "리버에서 무너진 {loser}",
+    ],
+    'cooler': [
+        "풀하우스 vs 풀하우스! {pot}BB 팟",
+        "쿨러 대결! {winner} vs {loser}",
+        "피할 수 없는 운명의 대결",
+    ],
+    'all_in': [
+        "{winner} vs {loser}, {pot}BB 올인 대결",
+        "올인 쇼다운! 누가 승자인가",
+        "{pot}BB를 건 올인 승부",
+    ],
+    'final_hand': [
+        "파이널 핸드! {winner} 우승 확정",
+        "{winner}, 마지막 핸드에서 승리",
+        "대단원의 막! {winner} 챔피언 등극",
+    ],
+}
+```
+
+#### 12.4.2 Subline 생성 규칙
+
+```python
+def generate_subline(content: dict) -> str:
+    parts = []
+
+    # 시리즈 컨텍스트
+    if content.get('series_title'):
+        parts.append(content['series_title'])
+
+    # 진행 상황
+    if content.get('episode_number'):
+        parts.append(f"Day {content['episode_number']}")
+
+    # 팟 크기 (클립인 경우)
+    if content.get('pot_size_bb'):
+        pot = content['pot_size_bb']
+        if pot >= 1000:
+            parts.append(f"${pot/1000:.1f}K Pot")
+        else:
+            parts.append(f"{pot}BB Pot")
+
+    # 플레이어 수
+    if content.get('player_count'):
+        parts.append(f"{content['player_count']} Players")
+
+    return " | ".join(parts)
+```
+
+#### 12.4.3 Before/After 비교
+
+| 상태 | 현재 (V2) | 제안 (V3) |
+|------|-----------|-----------|
+| **Headline** | Hand #1 \| Winner: NEGREANU | Negreanu의 역대급 블러프 |
+| **Subline** | (없음) | WSOP Main Event Day 7 \| $2.5M Pot |
+| **Badge** | (없음) | FINAL TABLE, ALL-IN |
+| **Thumbnail Text** | (없음) | "$2.5M" |
+
+### 12.5 Video Card UI 구조
+
+#### 12.5.1 Episode Card
+
+```
+┌─────────────────────────────────────┐
+│  ┌───────────────────────────────┐  │
+│  │                               │  │
+│  │         THUMBNAIL             │  │
+│  │                               │  │
+│  │  ┌──────────┐                 │  │
+│  │  │ 8:32:15  │                 │  │
+│  │  └──────────┘                 │  │
+│  └───────────────────────────────┘  │
+│                                     │
+│  WSOP Main Event 2024 - Day 7       │  ← headline
+│  Final Table | 9 Players            │  ← subline
+│                                     │
+│  [LIVE] [FINAL TABLE]               │  ← badges
+└─────────────────────────────────────┘
+```
+
+#### 12.5.2 Clip Card
+
+```
+┌─────────────────────────────────────┐
+│  ┌───────────────────────────────┐  │
+│  │           $2.5M               │  ← thumbnail_text
+│  │         THUMBNAIL             │  │
+│  │                               │  │
+│  │  ┌──────────┐  ┌──────────┐   │  │
+│  │  │  3:42    │  │  ALL-IN  │   │  ← duration + badge
+│  │  └──────────┘  └──────────┘   │  │
+│  └───────────────────────────────┘  │
+│                                     │
+│  Negreanu의 역대급 블러프           │  ← headline (storytelling)
+│  WSOP Main Event Day 7              │  ← subline (context)
+│                                     │
+│  👤 Negreanu, Ivey                  │  ← featured players
+└─────────────────────────────────────┘
+```
+
+### 12.6 마이그레이션 전략
+
+#### 12.6.1 단계별 계획
+
+| 단계 | 작업 | 위험도 |
+|------|------|--------|
+| 1 | series 테이블 생성 + 데이터 마이그레이션 | 낮음 |
+| 2 | contents 테이블 생성 + files/hands 통합 | 중간 |
+| 3 | content_players, content_tags 생성 | 낮음 |
+| 4 | 기존 API 어댑터 레이어 추가 | 낮음 |
+| 5 | Headline 생성 배치 작업 | 낮음 |
+| 6 | 기존 테이블 deprecation (6개월 후) | - |
+
+#### 12.6.2 마이그레이션 SQL (예시)
+
+```sql
+-- 1. subcatalogs + tournaments → series 마이그레이션
+INSERT INTO series (catalog_id, slug, title, year, event_type)
+SELECT
+    c.id,
+    LOWER(REPLACE(t.name, ' ', '-')) || '-' || t.year,
+    t.name,
+    t.year,
+    CASE
+        WHEN t.name LIKE '%Main Event%' THEN 'main_event'
+        WHEN t.name LIKE '%High Roller%' THEN 'high_roller'
+        ELSE 'side_event'
+    END
+FROM tournaments t
+JOIN subcatalogs s ON t.subcatalog_id = s.id
+JOIN catalogs c ON s.catalog_id = c.id;
+
+-- 2. files → contents (episode) 마이그레이션
+INSERT INTO contents (
+    series_id, content_type, headline, subline,
+    duration_sec, nas_path, file_size_bytes
+)
+SELECT
+    s.id,
+    'episode',
+    f.display_title,  -- 임시, 추후 Headline 생성
+    NULL,
+    m.duration_seconds,
+    f.nas_path,
+    f.file_size
+FROM files f
+JOIN media_info m ON f.id = m.file_id
+JOIN events e ON f.event_id = e.id
+JOIN series s ON s.slug = e.series_slug;  -- 매핑 필요
+
+-- 3. hands → contents (clip) 마이그레이션
+INSERT INTO contents (
+    series_id, content_type, headline, subline,
+    parent_episode_id, start_sec, end_sec,
+    winner, pot_size_bb, action_type
+)
+SELECT
+    c.series_id,
+    'clip',
+    h.display_title,  -- 임시, 추후 Headline 생성
+    NULL,
+    c.id,  -- parent episode
+    h.timecode_start_seconds,
+    h.timecode_end_seconds,
+    h.winner,
+    h.pot_bb,
+    h.action_types  -- JSON에서 첫 번째 추출
+FROM hands h
+JOIN contents c ON c.nas_path = h.file_path AND c.content_type = 'episode';
+```
+
+### 12.7 호환성 레이어
+
+기존 API 호환을 위한 뷰 제공:
+
+```sql
+-- files 테이블 호환 뷰
+CREATE VIEW v_files AS
+SELECT
+    id,
+    nas_path,
+    headline AS display_title,
+    duration_sec AS duration_seconds,
+    file_size_bytes AS file_size,
+    series_id
+FROM contents
+WHERE content_type = 'episode';
+
+-- hands 테이블 호환 뷰
+CREATE VIEW v_hands AS
+SELECT
+    c.id,
+    c.parent_episode_id AS file_id,
+    c.headline AS display_title,
+    c.winner,
+    c.pot_size_bb AS pot_bb,
+    c.action_type,
+    c.start_sec AS timecode_start_seconds,
+    c.end_sec AS timecode_end_seconds,
+    GROUP_CONCAT(p.name) AS players
+FROM contents c
+LEFT JOIN content_players cp ON c.id = cp.content_id
+LEFT JOIN players p ON cp.player_id = p.id
+WHERE c.content_type = 'clip'
+GROUP BY c.id;
+```
+
+### 12.8 CTR 최적화 가이드라인
+
+연구 기반 Video Card 최적화 지침:
+
+| 요소 | 권장 사항 | CTR 영향 |
+|------|----------|----------|
+| **Thumbnail Text** | 0-3 단어, 금액/숫자 강조 | +20-30% |
+| **Headline** | 50-60자, 감정 표현 포함 | +30% |
+| **Subline** | 시리즈 컨텍스트 + 핵심 수치 | +15% |
+| **Badges** | 최대 2개, 긴급성 표현 | +10% |
+| **플레이어 노출** | 유명 플레이어 이름 전면 배치 | +25% |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 버전 | 변경 내용 |
 |------|------|----------|
+| 2025-12-03 | 3.0.0 | **V3.0 Video Card 중심 스키마 설계**: 3단계 계층 구조, contents 통합, Headline 생성 규칙 |
 | 2025-12-03 | 2.5.0 | **스키마 통합 업데이트**: #12 JSON 정규화 + #13 정수 PK 문서 통합 |
 | 2025-12-03 | 2.4.0 | **정수 PK 마이그레이션 1단계**: `varchar_id` 컬럼 추가 (catalogs, subcatalogs, files), `id_mapping` 테이블 |
 | 2025-12-03 | 2.3.0 | **JSON 정규화 테이블 추가**: `hand_players`, `hand_tags` 테이블 (hands.players/tags JSON → 관계형) |

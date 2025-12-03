@@ -14,23 +14,22 @@ Usage:
     python -m archive_analyzer.sheets_sync --daemon
 """
 
+import hashlib
+import json
 import os
 import sqlite3
-import json
-import hashlib
 import time
-from datetime import datetime
-from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
-from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
 import gspread
-from gspread.exceptions import APIError
 from google.oauth2.service_account import Credentials
+from gspread.exceptions import APIError
 
 # Title Generator (optional - 없으면 규칙 기반 생성 스킵)
 try:
     from archive_analyzer.title_generator import TitleGenerator
+
     TITLE_GENERATOR_AVAILABLE = True
 except ImportError:
     TITLE_GENERATOR_AVAILABLE = False
@@ -39,6 +38,7 @@ except ImportError:
 # =============================================
 # Configuration
 # =============================================
+
 
 @dataclass
 class SyncConfig:
@@ -51,6 +51,7 @@ class SyncConfig:
         SYNC_INTERVAL: 동기화 주기 (초)
         TABLES_TO_SYNC: 동기화할 테이블 (콤마 구분)
     """
+
     # Google Sheets
     credentials_path: str = None
     spreadsheet_id: str = None
@@ -67,19 +68,17 @@ class SyncConfig:
         if self.credentials_path is None:
             self.credentials_path = os.environ.get(
                 "CREDENTIALS_PATH",
-                "D:/AI/claude01/archive-analyzer/config/gcp-service-account.json"
+                "D:/AI/claude01/archive-analyzer/config/gcp-service-account.json",
             )
 
         if self.spreadsheet_id is None:
             self.spreadsheet_id = os.environ.get(
-                "SPREADSHEET_ID",
-                "1TW2ON5CQyIrL8aGQNYJ4OWkbZMaGmY9DoDG9VFXU60I"
+                "SPREADSHEET_ID", "1TW2ON5CQyIrL8aGQNYJ4OWkbZMaGmY9DoDG9VFXU60I"
             )
 
         if self.db_path is None:
             self.db_path = os.environ.get(
-                "DB_PATH",
-                "D:/AI/claude01/qwen_hand_analysis/data/pokervod.db"
+                "DB_PATH", "D:/AI/claude01/qwen_hand_analysis/data/pokervod.db"
             )
 
         # 환경변수에서 sync_interval 로드
@@ -108,6 +107,7 @@ class SyncConfig:
 # =============================================
 # Google Sheets Client
 # =============================================
+
 
 class SheetsClient:
     """Google Sheets API 클라이언트 (Rate Limit 대응)
@@ -160,7 +160,9 @@ class SheetsClient:
         # 60회 한도 근접 시 남은 시간 대기
         if self._request_count >= 55:  # 안전 마진
             wait_time = 60 - elapsed + 1
-            print(f"    Approaching rate limit ({self._request_count}/60), waiting {wait_time:.1f}s...")
+            print(
+                f"    Approaching rate limit ({self._request_count}/60), waiting {wait_time:.1f}s..."
+            )
             time.sleep(wait_time)
             self._request_count = 0
             self._minute_start = time.time()
@@ -182,11 +184,10 @@ class SheetsClient:
             except APIError as e:
                 if e.response.status_code == 429:
                     # Truncated Exponential Backoff
-                    wait_time = min(
-                        (2 ** attempt) + random.uniform(0, 1),
-                        self.MAX_BACKOFF
+                    wait_time = min((2**attempt) + random.uniform(0, 1), self.MAX_BACKOFF)
+                    print(
+                        f"    Rate limit (429), backoff {wait_time:.1f}s (attempt {attempt + 1}/{self.MAX_RETRIES})"
                     )
-                    print(f"    Rate limit (429), backoff {wait_time:.1f}s (attempt {attempt + 1}/{self.MAX_RETRIES})")
                     time.sleep(wait_time)
                     # 분 카운터 리셋
                     self._request_count = 0
@@ -201,10 +202,9 @@ class SheetsClient:
             worksheet = self._with_retry(self.spreadsheet.worksheet, name)
         except gspread.WorksheetNotFound:
             worksheet = self._with_retry(
-                self.spreadsheet.add_worksheet,
-                title=name, rows=1000, cols=len(headers)
+                self.spreadsheet.add_worksheet, title=name, rows=1000, cols=len(headers)
             )
-            self._with_retry(worksheet.update, values=[headers], range_name='A1')
+            self._with_retry(worksheet.update, values=[headers], range_name="A1")
             self._with_retry(worksheet.freeze, rows=1)
         return worksheet
 
@@ -225,7 +225,7 @@ class SheetsClient:
 
         if rows:
             # 새 데이터 입력
-            self._with_retry(worksheet.update, values=rows, range_name='A2')
+            self._with_retry(worksheet.update, values=rows, range_name="A2")
 
     def get_worksheet_hash(self, worksheet_name: str) -> str:
         """워크시트 데이터의 해시값 계산"""
@@ -237,6 +237,7 @@ class SheetsClient:
 # =============================================
 # Database Client
 # =============================================
+
 
 class DatabaseClient:
     """SQLite 데이터베이스 클라이언트"""
@@ -256,11 +257,13 @@ class DatabaseClient:
         cursor = conn.execute(f"PRAGMA table_info({table_name})")
         columns = []
         for row in cursor.fetchall():
-            columns.append({
-                "name": row["name"],
-                "type": row["type"],
-                "pk": row["pk"] == 1,
-            })
+            columns.append(
+                {
+                    "name": row["name"],
+                    "type": row["type"],
+                    "pk": row["pk"] == 1,
+                }
+            )
         conn.close()
         return columns
 
@@ -293,7 +296,9 @@ class DatabaseClient:
 
         columns = list(record.keys())
         placeholders = ", ".join(["?" for _ in columns])
-        update_clause = ", ".join([f"{col} = excluded.{col}" for col in columns if col != pk_column])
+        update_clause = ", ".join(
+            [f"{col} = excluded.{col}" for col in columns if col != pk_column]
+        )
 
         sql = f"""
             INSERT INTO {table_name} ({", ".join(columns)})
@@ -320,7 +325,9 @@ class DatabaseClient:
         conn = self.get_connection()
         columns = list(records[0].keys())
         placeholders = ", ".join(["?" for _ in columns])
-        update_clause = ", ".join([f"{col} = excluded.{col}" for col in columns if col != pk_column])
+        update_clause = ", ".join(
+            [f"{col} = excluded.{col}" for col in columns if col != pk_column]
+        )
 
         sql = f"""
             INSERT INTO {table_name} ({", ".join(columns)})
@@ -338,6 +345,7 @@ class DatabaseClient:
 # =============================================
 # Sync Service
 # =============================================
+
 
 class SheetsSyncService:
     """Google Sheets <-> SQLite 양방향 동기화 서비스"""
@@ -392,7 +400,7 @@ class SheetsSyncService:
         # 최초 실행 시 해시만 저장하고 스킵 (거짓 변경 방지)
         if last_db_hash is None or last_sheet_hash is None:
             self._last_hashes[table_name] = {"db": db_hash, "sheet": sheet_hash}
-            print(f"    (초기화 - 해시 저장)")
+            print("    (초기화 - 해시 저장)")
             return stats
 
         db_changed = db_hash != last_db_hash
@@ -404,14 +412,18 @@ class SheetsSyncService:
 
         if sheet_changed and not db_changed:
             # Sheet에서 변경됨 -> DB로 동기화
-            stats = self._sync_sheet_to_db(table_name, sheet_records, db_rows, pk_column, db_columns)
+            stats = self._sync_sheet_to_db(
+                table_name, sheet_records, db_rows, pk_column, db_columns
+            )
         elif db_changed and not sheet_changed:
             # DB에서 변경됨 -> Sheet로 동기화
             stats = self._sync_db_to_sheet(table_name, db_columns, db_rows)
         else:
             # 양쪽 다 변경됨 -> Sheet 우선 (사용자 편집 우선)
-            print(f"    Both changed, prioritizing Sheet changes...")
-            stats = self._sync_sheet_to_db(table_name, sheet_records, db_rows, pk_column, db_columns)
+            print("    Both changed, prioritizing Sheet changes...")
+            stats = self._sync_sheet_to_db(
+                table_name, sheet_records, db_rows, pk_column, db_columns
+            )
 
         # 해시 저장
         self._last_hashes[table_name] = {
@@ -445,7 +457,11 @@ class SheetsSyncService:
             typed_record = self._convert_types(record, table_name)
             pk_value = typed_record.get(pk_column)
 
+            # #35 - PK None 처리 개선: 경고 로깅
             if pk_value is None or pk_value == "":
+                import logging
+
+                logging.warning(f"Skipping row with empty PK in {table_name}: {record}")
                 continue
 
             # subcatalogs: full_path_name 자동 계산
@@ -618,14 +634,22 @@ class SheetsSyncService:
             players = []
             if record.get("players"):
                 try:
-                    players = json.loads(record["players"]) if isinstance(record["players"], str) else record["players"]
+                    players = (
+                        json.loads(record["players"])
+                        if isinstance(record["players"], str)
+                        else record["players"]
+                    )
                 except (json.JSONDecodeError, TypeError):
                     pass
 
             tags = []
             if record.get("tags"):
                 try:
-                    tags = json.loads(record["tags"]) if isinstance(record["tags"], str) else record["tags"]
+                    tags = (
+                        json.loads(record["tags"])
+                        if isinstance(record["tags"], str)
+                        else record["tags"]
+                    )
                 except (json.JSONDecodeError, TypeError):
                     pass
 
@@ -654,7 +678,9 @@ class SheetsSyncService:
             results[table_name] = stats
 
             if any(stats.values()):
-                print(f"    -> inserted: {stats['inserted']}, updated: {stats['updated']}, deleted: {stats['deleted']}")
+                print(
+                    f"    -> inserted: {stats['inserted']}, updated: {stats['updated']}, deleted: {stats['deleted']}"
+                )
 
         return results
 
@@ -684,6 +710,7 @@ class SheetsSyncService:
 # =============================================
 # CLI
 # =============================================
+
 
 def main():
     import argparse

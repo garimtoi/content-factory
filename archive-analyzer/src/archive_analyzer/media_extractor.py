@@ -10,16 +10,15 @@ Issue #8: 미디어 메타데이터 추출기 구현 (FR-002)
 
 import json
 import logging
+import os
 import subprocess
 import tempfile
-import os
-from dataclasses import dataclass, asdict
-from typing import Optional, List, Dict, Any, Callable
-from pathlib import Path
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
-from .smb_connector import SMBConnector, FileInfo
-from .file_classifier import FileType, classify_file
+from .smb_connector import SMBConnector
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +26,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MediaInfo:
     """미디어 메타데이터"""
+
     file_id: Optional[int] = None
     file_path: str = ""
 
@@ -106,11 +106,11 @@ class MediaInfo:
     def to_dict(self) -> Dict[str, Any]:
         """딕셔너리 변환"""
         d = asdict(self)
-        d['resolution'] = self.resolution
-        d['resolution_label'] = self.resolution_label
-        d['duration_formatted'] = self.duration_formatted
-        if d['extracted_at']:
-            d['extracted_at'] = d['extracted_at'].isoformat()
+        d["resolution"] = self.resolution
+        d["resolution_label"] = self.resolution_label
+        d["duration_formatted"] = self.duration_formatted
+        if d["extracted_at"]:
+            d["extracted_at"] = d["extracted_at"].isoformat()
         return d
 
 
@@ -129,10 +129,7 @@ class FFprobeExtractor:
         """FFprobe 설치 확인"""
         try:
             result = subprocess.run(
-                [self.ffprobe_path, "-version"],
-                capture_output=True,
-                text=True,
-                timeout=10
+                [self.ffprobe_path, "-version"], capture_output=True, text=True, timeout=10
             )
             if result.returncode != 0:
                 raise RuntimeError("FFprobe not working properly")
@@ -158,11 +155,13 @@ class FFprobeExtractor:
             # FFprobe 실행
             cmd = [
                 self.ffprobe_path,
-                "-v", "quiet",
-                "-print_format", "json",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
                 "-show_format",
                 "-show_streams",
-                file_path
+                file_path,
             ]
 
             result = subprocess.run(
@@ -170,8 +169,8 @@ class FFprobeExtractor:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                encoding='utf-8',
-                errors='replace'
+                encoding="utf-8",
+                errors="replace",
             )
 
             if result.returncode != 0:
@@ -249,7 +248,9 @@ class FFprobeExtractor:
                     info.audio_codec = stream.get("codec_name")
                     info.audio_codec_long = stream.get("codec_long_name")
                     info.audio_channels = stream.get("channels")
-                    info.audio_sample_rate = int(stream.get("sample_rate", 0)) if stream.get("sample_rate") else None
+                    info.audio_sample_rate = (
+                        int(stream.get("sample_rate", 0)) if stream.get("sample_rate") else None
+                    )
 
                     # 오디오 비트레이트
                     if stream.get("bit_rate"):
@@ -292,6 +293,7 @@ class SMBMediaExtractor:
         smb_path: str,
         file_id: Optional[int] = None,
         full_download: bool = False,
+        _retry_count: int = 0,  # #36 - 재시도 카운터
     ) -> MediaInfo:
         """SMB 파일에서 메타데이터 추출
 
@@ -328,13 +330,30 @@ class SMBMediaExtractor:
 
                 # 결과 복사
                 for attr in [
-                    'video_codec', 'video_codec_long', 'width', 'height',
-                    'framerate', 'video_bitrate', 'audio_codec', 'audio_codec_long',
-                    'audio_channels', 'audio_sample_rate', 'audio_bitrate',
-                    'duration_seconds', 'bitrate', 'container_format',
-                    'format_long_name', 'has_video', 'has_audio',
-                    'video_stream_count', 'audio_stream_count', 'subtitle_stream_count',
-                    'title', 'creation_time', 'extraction_status', 'extraction_error'
+                    "video_codec",
+                    "video_codec_long",
+                    "width",
+                    "height",
+                    "framerate",
+                    "video_bitrate",
+                    "audio_codec",
+                    "audio_codec_long",
+                    "audio_channels",
+                    "audio_sample_rate",
+                    "audio_bitrate",
+                    "duration_seconds",
+                    "bitrate",
+                    "container_format",
+                    "format_long_name",
+                    "has_video",
+                    "has_audio",
+                    "video_stream_count",
+                    "audio_stream_count",
+                    "subtitle_stream_count",
+                    "title",
+                    "creation_time",
+                    "extraction_status",
+                    "extraction_error",
                 ]:
                     setattr(info, attr, getattr(result, attr))
 
@@ -342,10 +361,10 @@ class SMBMediaExtractor:
                 info.file_size = file_info.size
                 info.extracted_at = datetime.now()
 
-                # 부분 다운로드로 실패한 경우 전체 다운로드 시도
-                if info.extraction_status == "failed" and not full_download:
+                # 부분 다운로드로 실패한 경우 전체 다운로드 시도 (#36 - 재시도 1회 제한)
+                if info.extraction_status == "failed" and not full_download and _retry_count == 0:
                     logger.info(f"Retrying with full download: {smb_path}")
-                    return self.extract(smb_path, file_id, full_download=True)
+                    return self.extract(smb_path, file_id, full_download=True, _retry_count=1)
 
             finally:
                 # 임시 파일 삭제
@@ -359,12 +378,7 @@ class SMBMediaExtractor:
 
         return info
 
-    def _download_for_analysis(
-        self,
-        smb_path: str,
-        file_size: int,
-        full_download: bool
-    ) -> str:
+    def _download_for_analysis(self, smb_path: str, file_size: int, full_download: bool) -> str:
         """분석을 위한 임시 다운로드
 
         Args:
@@ -392,16 +406,16 @@ class SMBMediaExtractor:
             logger.debug(f"Downloading {download_size:,} bytes of {smb_path}")
 
             # SMB에서 읽기
-            with self.connector.open_file(smb_path, mode='rb') as smb_file:
+            with self.connector.open_file(smb_path, mode="rb") as smb_file:
                 data = smb_file.read(download_size)
 
             # 임시 파일에 저장
-            with open(temp_path, 'wb') as f:
+            with open(temp_path, "wb") as f:
                 f.write(data)
 
             return temp_path
 
-        except Exception as e:
+        except Exception:
             # 실패 시 임시 파일 삭제
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -411,6 +425,7 @@ class SMBMediaExtractor:
 @dataclass
 class ExtractionProgress:
     """추출 진행 상황"""
+
     total_files: int
     processed_files: int
     successful: int
@@ -465,10 +480,7 @@ class MediaMetadataExtractor:
         self._successful = 0
         self._failed = 0
 
-    def set_progress_callback(
-        self,
-        callback: Callable[[ExtractionProgress], None]
-    ) -> None:
+    def set_progress_callback(self, callback: Callable[[ExtractionProgress], None]) -> None:
         """진행률 콜백 설정"""
         self._progress_callback = callback
 
@@ -508,10 +520,7 @@ class MediaMetadataExtractor:
 
             try:
                 # 메타데이터 추출
-                info = self.smb_extractor.extract(
-                    file_record.path,
-                    file_id=file_record.id
-                )
+                info = self.smb_extractor.extract(file_record.path, file_id=file_record.id)
 
                 # 데이터베이스 저장
                 self.database.insert_media_info(info)
@@ -537,12 +546,12 @@ class MediaMetadataExtractor:
         duration = (datetime.now() - self._start_time).total_seconds()
 
         return {
-            'total_files': total_files,
-            'processed': self._processed,
-            'successful': self._successful,
-            'failed': self._failed,
-            'duration_seconds': duration,
-            'files_per_second': self._processed / duration if duration > 0 else 0,
+            "total_files": total_files,
+            "processed": self._processed,
+            "successful": self._successful,
+            "failed": self._failed,
+            "duration_seconds": duration,
+            "files_per_second": self._processed / duration if duration > 0 else 0,
         }
 
     def _notify_progress(self, total: int, current_path: str) -> None:
