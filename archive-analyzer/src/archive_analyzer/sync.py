@@ -6,6 +6,7 @@ archive.db 데이터를 pokervod.db로 동기화합니다.
 - files 테이블: 파일 메타데이터
 - media_info → files: 코덱, 해상도, 재생시간 등
 
+#20: 카탈로그 패턴 YAML 외부화
 #21: 경로 정규화 유틸 통합
 """
 
@@ -16,6 +17,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
 
 from .utils.path import generate_file_id, normalize_path
 
@@ -51,67 +54,56 @@ class SyncResult:
         return self.inserted + self.updated + self.skipped
 
 
-# 다단계 카테고리 분류 패턴 (depth 1~3)
-# 패턴: (regex, catalog_id, subcatalog_id, depth)
-# depth=1: 최상위 서브카탈로그
-# depth=2: 2단계 서브카탈로그
-# depth=3: 3단계 서브카탈로그 (연도별)
-MULTILEVEL_PATTERNS = [
-    # WSOP-BR 하위 (depth=2~3)
-    # 연도가 포함된 경로는 depth=3으로 분류
-    (r"WSOP/WSOP-BR/WSOP-EUROPE/(\d{4})", "WSOP", "wsop-europe-{year}", 3),
-    (r"WSOP/WSOP-BR/WSOP-PARADISE/(\d{4})", "WSOP", "wsop-paradise-{year}", 3),
-    (r"WSOP/WSOP-BR/WSOP-LAS\s?VEGAS/(\d{4})", "WSOP", "wsop-las-vegas-{year}", 3),
-    # 연도 없으면 depth=2
-    (r"WSOP/WSOP-BR/WSOP-EUROPE", "WSOP", "wsop-europe", 2),
-    (r"WSOP/WSOP-BR/WSOP-PARADISE", "WSOP", "wsop-paradise", 2),
-    (r"WSOP/WSOP-BR/WSOP-LAS\s?VEGAS", "WSOP", "wsop-las-vegas", 2),
-    # WSOP-BR 자체 (depth=1)
-    (r"WSOP/WSOP-BR", "WSOP", "wsop-br", 1),
-    # WSOP Archive 하위 (depth=2~3)
-    (r"WSOP/WSOP\s?ARCHIVE/(1973|19[789]\d|200[0-2])", "WSOP", "wsop-archive-1973-2002", 2),
-    (r"WSOP/WSOP\s?ARCHIVE/(200[3-9]|2010)", "WSOP", "wsop-archive-2003-2010", 2),
-    (r"WSOP/WSOP\s?ARCHIVE/(201[1-6])", "WSOP", "wsop-archive-2011-2016", 2),
-    (r"WSOP/WSOP\s?ARCHIVE", "WSOP", "wsop-archive", 1),
-    # WSOP Circuit/Super Circuit (depth=1)
-    (r"WSOP/WSOP-C", "WSOP", "wsop-circuit", 1),
-    (r"WSOP/WSOP-SC", "WSOP", "wsop-super-circuit", 1),
-    # HCL (depth=1)
-    (r"HCL/(\d{4})", "HCL", "hcl-{year}", 1),
-    (r"HCL/.*[Cc]lip", "HCL", "hcl-clips", 1),
-    (r"HCL/", "HCL", None, 0),
-    # PAD (depth=1)
-    (r"PAD/[Ss](?:eason\s?)?12", "PAD", "pad-s12", 1),
-    (r"PAD/[Ss](?:eason\s?)?13", "PAD", "pad-s13", 1),
-    (r"PAD/", "PAD", None, 0),
-    # MPP (depth=1)
-    (r"MPP/.*1\s?[Mm]", "MPP", "mpp-1m", 1),
-    (r"MPP/.*2\s?[Mm]", "MPP", "mpp-2m", 1),
-    (r"MPP/.*5\s?[Mm]", "MPP", "mpp-5m", 1),
-    (r"MPP/", "MPP", None, 0),
-    # GGMillions (depth=1)
-    (r"GGMillions/", "GGMillions", "ggmillions-main", 1),
-]
+# YAML 패턴 파일 경로
+_PATTERNS_FILE = Path(__file__).parent.parent.parent / "config" / "catalog_patterns.yaml"
 
-# 레거시 호환용 단순 패턴
-CATEGORY_PATTERNS = [
-    (r"WSOP/WSOP ARCHIVE", "WSOP", "wsop-archive"),
-    (r"WSOP/WSOP-BR/WSOP-EUROPE", "WSOP", "wsop-europe"),
-    (r"WSOP/WSOP-BR/WSOP-PARADISE", "WSOP", "wsop-paradise"),
-    (r"WSOP/WSOP-BR/WSOP-LAS VEGAS", "WSOP", "wsop-las-vegas"),
-    (r"WSOP/WSOP-C", "WSOP", "wsop-circuit"),
-    (r"WSOP/WSOP-SC", "WSOP", "wsop-super-circuit"),
-    (r"HCL/", "HCL", None),
-    (r"PAD/", "PAD", None),
-    (r"MPP/", "MPP", None),
-    (r"GGMillions/", "GGMillions", None),
-]
+# 캐시된 패턴 (지연 로드)
+_patterns_cache: Optional[Dict[str, Any]] = None
+
+
+def _load_patterns() -> Dict[str, Any]:
+    """YAML 패턴 파일 로드 (#20)
+
+    Returns:
+        패턴 딕셔너리 (multilevel_patterns, legacy_patterns)
+    """
+    global _patterns_cache
+
+    if _patterns_cache is not None:
+        return _patterns_cache
+
+    if _PATTERNS_FILE.exists():
+        with open(_PATTERNS_FILE, encoding="utf-8") as f:
+            _patterns_cache = yaml.safe_load(f) or {}
+    else:
+        logger.warning(f"패턴 파일 없음: {_PATTERNS_FILE}, 빈 패턴 사용")
+        _patterns_cache = {"multilevel_patterns": [], "legacy_patterns": []}
+
+    return _patterns_cache
+
+
+def get_multilevel_patterns() -> List[Tuple[str, str, Optional[str], int]]:
+    """다단계 패턴 목록 반환 (튜플 형식)"""
+    patterns = _load_patterns().get("multilevel_patterns", [])
+    return [
+        (p["regex"], p["catalog_id"], p.get("subcatalog_id"), p.get("depth", 0))
+        for p in patterns
+    ]
+
+
+def get_legacy_patterns() -> List[Tuple[str, str, Optional[str]]]:
+    """레거시 패턴 목록 반환 (튜플 형식)"""
+    patterns = _load_patterns().get("legacy_patterns", [])
+    return [
+        (p["regex"], p["catalog_id"], p.get("subcatalog_id"))
+        for p in patterns
+    ]
 
 
 def classify_path(path: str) -> Tuple[str, Optional[str]]:
     """경로에서 카테고리/서브카테고리 추출 (레거시 호환)"""
     normalized = normalize_path(path)  # #21 - 유틸 사용
-    for pattern, catalog, subcatalog in CATEGORY_PATTERNS:
+    for pattern, catalog, subcatalog in get_legacy_patterns():  # #20 - YAML 로드
         if re.search(pattern, normalized, re.IGNORECASE):
             return catalog, subcatalog
     return "OTHER", None
@@ -151,7 +143,7 @@ def classify_path_multilevel(path: str) -> SubcatalogMatch:
     best_match_length = 0
     best_result = None
 
-    for pattern, catalog, subcatalog_template, depth in MULTILEVEL_PATTERNS:
+    for pattern, catalog, subcatalog_template, depth in get_multilevel_patterns():  # #20
         match = re.search(pattern, normalized, re.IGNORECASE)
         if match:
             match_length = len(match.group(0))

@@ -27,6 +27,7 @@ dependencies = [
     "smbprotocol>=1.10.0",
     "aiosmb>=0.4.0",
     "rapidfuzz>=3.0.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]

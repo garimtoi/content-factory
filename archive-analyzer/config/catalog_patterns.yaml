@@ -1,0 +1,190 @@
+# 카탈로그 패턴 설정
+# #20: sync.py 하드코딩 패턴 외부화
+#
+# 구조:
+#   multilevel_patterns: 다단계 카테고리 분류 (depth 1~3)
+#   legacy_patterns: 레거시 호환용 단순 패턴
+#
+# multilevel_patterns 필드:
+#   - regex: 정규표현식 패턴
+#   - catalog_id: 카탈로그 ID (WSOP, HCL, PAD 등)
+#   - subcatalog_id: 서브카탈로그 ID (템플릿 형식 지원: {year})
+#   - depth: 깊이 (0=카탈로그만, 1~3=서브카탈로그 레벨)
+
+multilevel_patterns:
+  # === WSOP-BR 하위 (depth=2~3) ===
+  # 연도가 포함된 경로는 depth=3으로 분류
+  - regex: 'WSOP/WSOP-BR/WSOP-EUROPE/(\d{4})'
+    catalog_id: WSOP
+    subcatalog_id: wsop-europe-{year}
+    depth: 3
+
+  - regex: 'WSOP/WSOP-BR/WSOP-PARADISE/(\d{4})'
+    catalog_id: WSOP
+    subcatalog_id: wsop-paradise-{year}
+    depth: 3
+
+  - regex: 'WSOP/WSOP-BR/WSOP-LAS\s?VEGAS/(\d{4})'
+    catalog_id: WSOP
+    subcatalog_id: wsop-las-vegas-{year}
+    depth: 3
+
+  # 연도 없으면 depth=2
+  - regex: 'WSOP/WSOP-BR/WSOP-EUROPE'
+    catalog_id: WSOP
+    subcatalog_id: wsop-europe
+    depth: 2
+
+  - regex: 'WSOP/WSOP-BR/WSOP-PARADISE'
+    catalog_id: WSOP
+    subcatalog_id: wsop-paradise
+    depth: 2
+
+  - regex: 'WSOP/WSOP-BR/WSOP-LAS\s?VEGAS'
+    catalog_id: WSOP
+    subcatalog_id: wsop-las-vegas
+    depth: 2
+
+  # WSOP-BR 자체 (depth=1)
+  - regex: 'WSOP/WSOP-BR'
+    catalog_id: WSOP
+    subcatalog_id: wsop-br
+    depth: 1
+
+  # === WSOP Archive 하위 (depth=2) ===
+  - regex: 'WSOP/WSOP\s?ARCHIVE/(1973|19[789]\d|200[0-2])'
+    catalog_id: WSOP
+    subcatalog_id: wsop-archive-1973-2002
+    depth: 2
+
+  - regex: 'WSOP/WSOP\s?ARCHIVE/(200[3-9]|2010)'
+    catalog_id: WSOP
+    subcatalog_id: wsop-archive-2003-2010
+    depth: 2
+
+  - regex: 'WSOP/WSOP\s?ARCHIVE/(201[1-6])'
+    catalog_id: WSOP
+    subcatalog_id: wsop-archive-2011-2016
+    depth: 2
+
+  - regex: 'WSOP/WSOP\s?ARCHIVE'
+    catalog_id: WSOP
+    subcatalog_id: wsop-archive
+    depth: 1
+
+  # === WSOP Circuit/Super Circuit (depth=1) ===
+  - regex: 'WSOP/WSOP-C'
+    catalog_id: WSOP
+    subcatalog_id: wsop-circuit
+    depth: 1
+
+  - regex: 'WSOP/WSOP-SC'
+    catalog_id: WSOP
+    subcatalog_id: wsop-super-circuit
+    depth: 1
+
+  # === HCL (depth=1) ===
+  - regex: 'HCL/(\d{4})'
+    catalog_id: HCL
+    subcatalog_id: hcl-{year}
+    depth: 1
+
+  - regex: 'HCL/.*[Cc]lip'
+    catalog_id: HCL
+    subcatalog_id: hcl-clips
+    depth: 1
+
+  - regex: 'HCL/'
+    catalog_id: HCL
+    subcatalog_id: null
+    depth: 0
+
+  # === PAD (depth=1) ===
+  - regex: 'PAD/[Ss](?:eason\s?)?12'
+    catalog_id: PAD
+    subcatalog_id: pad-s12
+    depth: 1
+
+  - regex: 'PAD/[Ss](?:eason\s?)?13'
+    catalog_id: PAD
+    subcatalog_id: pad-s13
+    depth: 1
+
+  - regex: 'PAD/'
+    catalog_id: PAD
+    subcatalog_id: null
+    depth: 0
+
+  # === MPP (depth=1) ===
+  - regex: 'MPP/.*1\s?[Mm]'
+    catalog_id: MPP
+    subcatalog_id: mpp-1m
+    depth: 1
+
+  - regex: 'MPP/.*2\s?[Mm]'
+    catalog_id: MPP
+    subcatalog_id: mpp-2m
+    depth: 1
+
+  - regex: 'MPP/.*5\s?[Mm]'
+    catalog_id: MPP
+    subcatalog_id: mpp-5m
+    depth: 1
+
+  - regex: 'MPP/'
+    catalog_id: MPP
+    subcatalog_id: null
+    depth: 0
+
+  # === GGMillions (depth=1) ===
+  - regex: 'GGMillions/'
+    catalog_id: GGMillions
+    subcatalog_id: ggmillions-main
+    depth: 1
+
+
+# 레거시 호환용 단순 패턴
+# 필드:
+#   - regex: 정규표현식 패턴
+#   - catalog_id: 카탈로그 ID
+#   - subcatalog_id: 서브카탈로그 ID (null 가능)
+legacy_patterns:
+  - regex: 'WSOP/WSOP ARCHIVE'
+    catalog_id: WSOP
+    subcatalog_id: wsop-archive
+
+  - regex: 'WSOP/WSOP-BR/WSOP-EUROPE'
+    catalog_id: WSOP
+    subcatalog_id: wsop-europe
+
+  - regex: 'WSOP/WSOP-BR/WSOP-PARADISE'
+    catalog_id: WSOP
+    subcatalog_id: wsop-paradise
+
+  - regex: 'WSOP/WSOP-BR/WSOP-LAS VEGAS'
+    catalog_id: WSOP
+    subcatalog_id: wsop-las-vegas
+
+  - regex: 'WSOP/WSOP-C'
+    catalog_id: WSOP
+    subcatalog_id: wsop-circuit
+
+  - regex: 'WSOP/WSOP-SC'
+    catalog_id: WSOP
+    subcatalog_id: wsop-super-circuit
+
+  - regex: 'HCL/'
+    catalog_id: HCL
+    subcatalog_id: null
+
+  - regex: 'PAD/'
+    catalog_id: PAD
+    subcatalog_id: null
+
+  - regex: 'MPP/'
+    catalog_id: MPP
+    subcatalog_id: null
+
+  - regex: 'GGMillions/'
+    catalog_id: GGMillions
+    subcatalog_id: null
