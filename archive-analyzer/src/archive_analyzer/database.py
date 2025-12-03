@@ -6,10 +6,11 @@
 import logging
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -141,13 +142,17 @@ class Database:
 
     SCHEMA_VERSION = 1
 
-    def __init__(self, db_path: str = "archive.db"):
+    def __init__(self, db_path: str = "archive.db", stats_cache_ttl: int = 60):
         """
         Args:
             db_path: 데이터베이스 파일 경로
+            stats_cache_ttl: 통계 캐시 TTL (초, 기본값 60초) (#42)
         """
         self.db_path = db_path
         self._local = threading.local()  # #17 - 스레드 로컬 저장소
+        self._stats_cache: Optional[Tuple[float, dict]] = None  # (timestamp, data) #42
+        self._stats_cache_ttl = stats_cache_ttl  # #42
+        self._stats_lock = threading.Lock()  # #42 - 캐시 동시성 제어
         self._ensure_schema()
 
     @property
@@ -409,6 +414,7 @@ class Database:
         )
 
         conn.commit()
+        self.invalidate_stats_cache()  # #42 - 캐시 무효화
         return cursor.lastrowid
 
     def insert_files_batch(self, records: List[FileRecord]) -> int:
@@ -450,6 +456,7 @@ class Database:
         )
 
         conn.commit()
+        self.invalidate_stats_cache()  # #42 - 캐시 무효화
         return len(records)
 
     def get_file_by_path(self, path: str) -> Optional[FileRecord]:
@@ -540,8 +547,29 @@ class Database:
 
         return cursor.fetchone()[0]
 
-    def get_statistics(self) -> dict:
-        """전체 통계 조회"""
+    def get_statistics(self, force_refresh: bool = False) -> dict:
+        """전체 통계 조회 (#42 - 캐싱 적용)
+
+        Args:
+            force_refresh: True면 캐시 무시하고 새로 조회
+
+        Returns:
+            통계 딕셔너리 {total_files, total_size, by_type, cached}
+        """
+        current_time = time.time()
+
+        # 캐시 확인 (TTL 내 && force_refresh 아님)
+        with self._stats_lock:
+            if (
+                not force_refresh
+                and self._stats_cache is not None
+                and (current_time - self._stats_cache[0]) < self._stats_cache_ttl
+            ):
+                cached_stats = self._stats_cache[1].copy()
+                cached_stats["cached"] = True
+                return cached_stats
+
+        # 캐시 미스 또는 만료 - DB 조회
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -556,7 +584,7 @@ class Database:
         """
         )
 
-        stats = {"total_files": 0, "total_size": 0, "by_type": {}}
+        stats: Dict[str, any] = {"total_files": 0, "total_size": 0, "by_type": {}}
 
         for row in cursor.fetchall():
             file_type = row["file_type"] or "unknown"
@@ -567,7 +595,21 @@ class Database:
             stats["total_files"] += count
             stats["total_size"] += size
 
+        # 캐시 갱신
+        with self._stats_lock:
+            self._stats_cache = (current_time, stats.copy())
+
+        stats["cached"] = False
         return stats
+
+    def invalidate_stats_cache(self) -> None:
+        """통계 캐시 무효화 (#42)
+
+        파일 추가/삭제 후 호출하여 캐시를 강제로 무효화
+        """
+        with self._stats_lock:
+            self._stats_cache = None
+        logger.debug("통계 캐시 무효화됨")
 
     # === 체크포인트 ===
 
