@@ -1,17 +1,17 @@
 # Database Schema Documentation
 
 > **Last Updated**: 2025-12-03
-> **Version**: 3.0.0
+> **Version**: 2.5.1
 
 이 문서는 archive-analyzer와 연동 레포지토리 간 DB 스키마를 정의합니다.
 **스키마 변경 시 반드시 이 문서를 업데이트하고 관련 레포에 공유해야 합니다.**
 
-### 테이블 요약 (총 38개)
+### 테이블 요약 (총 34개 구현 + 4개 설계 중)
 
 | 카테고리 | 테이블 | 설명 |
 |----------|--------|------|
 | **Core** | catalogs, subcatalogs, tournaments, events, files, hands, players, hand_players, hand_tags, id_mapping | 콘텐츠 계층 구조 + 정규화 |
-| **V3.0** | series, contents, content_players, content_tags | Video Card 중심 통합 스키마 (Section 12) |
+| **V3.0 ⏳** | series, contents, content_players, content_tags | **설계 중** - Video Card 중심 통합 스키마 (Section 12) |
 | **User** | users, user_sessions, user_preferences, watch_progress, view_events | 사용자 및 시청 기록 |
 | **Recommendation** | recommendation_cache, trending_scores, home_rows, user_home_rows | 추천 시스템 |
 | **Artwork** | artwork_variants, artwork_selections | 썸네일 개인화 |
@@ -1979,6 +1979,14 @@ async def get_collection_items(collection_id: str, limit: int = 50):
 
 ## 12. V3.0 스키마 설계 (Video Card 중심)
 
+> ⚠️ **구현 상태**: 설계 문서만 존재. 실제 테이블/마이그레이션 미구현.
+>
+> 구현 예정 항목:
+> - [ ] `scripts/migrate_v3_schema.py` 마이그레이션 스크립트
+> - [ ] `database.py` DDL 추가
+> - [ ] 기존 데이터 마이그레이션 (subcatalogs+tournaments+events → series)
+> - [ ] 호환성 뷰 (v_files, v_hands)
+
 ### 12.1 설계 배경
 
 #### 현재 문제점
@@ -2408,7 +2416,7 @@ GROUP BY c.id;
 
 | 날짜 | 버전 | 변경 내용 |
 |------|------|----------|
-| 2025-12-03 | 3.0.0 | **V3.0 Video Card 중심 스키마 설계**: 3단계 계층 구조, contents 통합, Headline 생성 규칙 |
+| 2025-12-03 | 2.5.1 | **V3.0 스키마 설계 문서 추가** (미구현): 3단계 계층 구조, contents 통합, Headline 생성 규칙 - Section 12 |
 | 2025-12-03 | 2.5.0 | **스키마 통합 업데이트**: #12 JSON 정규화 + #13 정수 PK 문서 통합 |
 | 2025-12-03 | 2.4.0 | **정수 PK 마이그레이션 1단계**: `varchar_id` 컬럼 추가 (catalogs, subcatalogs, files), `id_mapping` 테이블 |
 | 2025-12-03 | 2.3.0 | **JSON 정규화 테이블 추가**: `hand_players`, `hand_tags` 테이블 (hands.players/tags JSON → 관계형) |
