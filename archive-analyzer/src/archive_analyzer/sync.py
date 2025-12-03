@@ -5,9 +5,10 @@ archive.db 데이터를 pokervod.db로 동기화합니다.
 동기화 대상:
 - files 테이블: 파일 메타데이터
 - media_info → files: 코덱, 해상도, 재생시간 등
+
+#21: 경로 정규화 유틸 통합
 """
 
-import hashlib
 import logging
 import re
 import sqlite3
@@ -15,6 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from .utils.path import generate_file_id, normalize_path
 
 logger = logging.getLogger(__name__)
 
@@ -105,15 +108,9 @@ CATEGORY_PATTERNS = [
 ]
 
 
-def generate_file_id(nas_path: str) -> str:
-    """NAS 경로로 고유 ID 생성"""
-    normalized = nas_path.replace("\\", "/").lower()
-    return hashlib.md5(normalized.encode()).hexdigest()[:16]
-
-
 def classify_path(path: str) -> Tuple[str, Optional[str]]:
     """경로에서 카테고리/서브카테고리 추출 (레거시 호환)"""
-    normalized = path.replace("\\", "/")
+    normalized = normalize_path(path)  # #21 - 유틸 사용
     for pattern, catalog, subcatalog in CATEGORY_PATTERNS:
         if re.search(pattern, normalized, re.IGNORECASE):
             return catalog, subcatalog
@@ -148,7 +145,7 @@ def classify_path_multilevel(path: str) -> SubcatalogMatch:
     Returns:
         SubcatalogMatch 객체 (catalog_id, subcatalog_id, depth, year)
     """
-    normalized = path.replace("\\", "/")
+    normalized = normalize_path(path)  # #21 - 유틸 사용
 
     best_match = None
     best_match_length = 0

@@ -128,12 +128,15 @@ def parse_hand_grade(grade: str) -> int:
 
 
 def normalize_nas_path(path: str) -> str:
-    """NAS 경로 정규화"""
+    """NAS 경로 정규화
+
+    #21 - 중복 코드, utils.path에 동일 함수 존재
+    하위 호환성을 위해 유지하되 내부에서 utils.path 사용 권장
+    """
+    # #21 - utils.path.normalize_nas_path와 동일한 로직
     if not path:
         return ""
-    # 백슬래시를 슬래시로 변환
     normalized = path.replace("\\", "/")
-    # 앞의 // 제거
     if normalized.startswith("//"):
         normalized = normalized[2:]
     return normalized.lower()
