@@ -78,7 +78,7 @@ class SyncConfig:
 
         if self.db_path is None:
             self.db_path = os.environ.get(
-                "DB_PATH", "D:/AI/claude01/qwen_hand_analysis/data/pokervod.db"
+                "DB_PATH", "D:/AI/claude01/shared-data/pokervod.db"
             )
 
         # 환경변수에서 sync_interval 로드
@@ -90,10 +90,18 @@ class SyncConfig:
             if env_tables := os.environ.get("TABLES_TO_SYNC"):
                 self.tables_to_sync = [t.strip() for t in env_tables.split(",")]
             else:
-                # 동기화할 테이블 목록 (편집이 필요한 테이블)
-                # Note: display_names 테이블 제거됨 (display_title은 각 테이블에 직접 저장)
+                # 동기화할 테이블 목록 (V3.0 스키마 기준)
+                # V3.0: catalogs → series → contents (통합 구조)
                 self.tables_to_sync = [
+                    # V3.0 Core Tables
                     "catalogs",
+                    "series",
+                    "contents",
+                    "tags",
+                    # V3.0 Link Tables
+                    "content_players",
+                    "content_tags",
+                    # Legacy Tables (호환성)
                     "subcatalogs",
                     "players",
                     "events",

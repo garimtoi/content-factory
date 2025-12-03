@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 | 제약 | 설명 |
 |------|------|
-| **pokervod.db 스키마 변경 금지** | `qwen_hand_analysis` 소유, 변경 시 협의 필수 |
-| **스키마 문서 동기화 필수** | DB 변경 시 `docs/DATABASE_SCHEMA.md` 업데이트 |
+| **통합 DB 경로** | `D:/AI/claude01/shared-data/pokervod.db` (WAL 모드) |
+| **스키마 변경 시 문서 필수** | 변경 시 `docs/DATABASE_SCHEMA.md` + `DATABASE_UNIFICATION.md` 동기화 |
 | **FFprobe 필수** | 미디어 추출 기능에 시스템 PATH의 ffprobe 필요 |
 | **Python 3.10+** | 최소 요구 버전 |
 
@@ -155,7 +155,7 @@ config = AnalyzerConfig.from_file("config.json")
 
 ### 외부 DB 연동: pokervod.db
 
-**경로**: `d:/AI/claude01/qwen_hand_analysis/data/pokervod.db`
+**경로**: `D:/AI/claude01/shared-data/pokervod.db` (통합 DB)
 **소유자**: `qwen_hand_analysis` 레포 (OTT 플랫폼 마스터 DB)
 
 ```

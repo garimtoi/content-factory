@@ -62,7 +62,15 @@ class TestSyncConfig:
                 db_path="test.db",
             )
             expected_tables = [
+                # V3.0 Core Tables
                 "catalogs",
+                "series",
+                "contents",
+                "tags",
+                # V3.0 Link Tables
+                "content_players",
+                "content_tags",
+                # Legacy Tables
                 "subcatalogs",
                 "players",
                 "events",

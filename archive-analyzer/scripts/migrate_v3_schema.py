@@ -455,21 +455,36 @@ class V3SchemaMigration:
 
         # 기존 tournaments 테이블에서 마이그레이션
         if existing.get("tournaments"):
-            cursor.execute("""
-                SELECT
-                    t.id, t.catalog_id, t.name, t.year, t.location,
-                    t.subcatalog_id, t.description, t.display_title
-                FROM tournaments t
-            """)
+            # 스키마 동적 확인
+            cursor.execute("PRAGMA table_info(tournaments)")
+            columns = {row[1] for row in cursor.fetchall()}
+            has_description = "description" in columns
+            has_display_title = "display_title" in columns
+
+            select_cols = ["t.id", "t.catalog_id", "t.name", "t.year", "t.location", "t.subcatalog_id"]
+            if has_description:
+                select_cols.append("t.description")
+            if has_display_title:
+                select_cols.append("t.display_title")
+
+            cursor.execute(f"SELECT {', '.join(select_cols)} FROM tournaments t")
             tournaments = cursor.fetchall()
 
-            for t in tournaments:
-                slug = generate_slug(f"{t['name']}-{t['year'] or ''}")
+            # 결과를 dict로 변환
+            col_names = [desc[0].split('.')[-1] for desc in cursor.description]
+
+            for row in tournaments:
+                t = dict(zip(col_names, row))
+                slug = generate_slug(f"{t['name']}-{t.get('year') or ''}")
 
                 # 중복 체크
                 cursor.execute("SELECT id FROM series WHERE slug = ?", (slug,))
                 if cursor.fetchone():
                     slug = f"{slug}-{t['id']}"
+
+                # 옵션 필드 처리
+                display_title = t.get("display_title") or t["name"]
+                description = t.get("description")
 
                 cursor.execute(
                     """
@@ -482,13 +497,13 @@ class V3SchemaMigration:
                     (
                         t["catalog_id"],
                         slug,
-                        t["display_title"] or t["name"],
+                        display_title,
                         None,
-                        t["description"],
-                        t["year"],
-                        t["location"],
+                        description,
+                        t.get("year"),
+                        t.get("location"),
                         "tournament",
-                        t["subcatalog_id"],
+                        t.get("subcatalog_id"),
                         t["id"],
                     ),
                 )
@@ -576,24 +591,53 @@ class V3SchemaMigration:
         # files 테이블 스키마 확인
         cursor.execute("PRAGMA table_info(files)")
         columns = {row[1] for row in cursor.fetchall()}
+
+        # 컬럼 이름 동적 확인
+        path_col = "nas_path" if "nas_path" in columns else "path"
         has_event_id = "event_id" in columns
         has_display_title = "display_title" in columns
+        has_duration_sec = "duration_sec" in columns  # files에 직접 있는 경우
+        has_resolution = "resolution" in columns
+        has_codec = "codec" in columns
 
         # 동적 쿼리 생성
-        select_cols = ["f.id", "f.path", "f.filename", "f.size_bytes"]
+        select_cols = ["f.id", f"f.{path_col} as path", "f.filename", "f.size_bytes"]
         if has_event_id:
             select_cols.append("f.event_id")
         if has_display_title:
             select_cols.append("f.display_title")
 
-        # media_info 조인
-        query = f"""
-            SELECT
-                {', '.join(select_cols)},
-                m.duration_seconds, m.width, m.height, m.video_codec
-            FROM files f
-            LEFT JOIN media_info m ON f.id = m.file_id
-        """
+        # files 테이블에 미디어 정보가 있는 경우 직접 사용
+        if has_duration_sec and has_resolution and has_codec:
+            select_cols.extend([
+                "f.duration_sec as duration_seconds",
+                "f.resolution",
+                "f.codec as video_codec"
+            ])
+            query = f"SELECT {', '.join(select_cols)} FROM files f"
+        else:
+            # media_info 테이블 확인 (media_info 또는 nas_media_info)
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('media_info', 'nas_media_info')")
+            media_tables = [r[0] for r in cursor.fetchall()]
+            media_table = media_tables[0] if media_tables else None
+
+            if media_table:
+                query = f"""
+                    SELECT
+                        {', '.join(select_cols)},
+                        m.duration_seconds, m.width, m.height, m.video_codec
+                    FROM files f
+                    LEFT JOIN {media_table} m ON f.id = m.file_id
+                """
+            else:
+                query = f"""
+                    SELECT
+                        {', '.join(select_cols)},
+                        NULL as duration_seconds, NULL as width, NULL as height, NULL as video_codec
+                    FROM files f
+                """
+                logger.warning("media_info 테이블이 없습니다. 미디어 정보 없이 진행합니다.")
+
         cursor.execute(query)
         files = cursor.fetchall()
 
@@ -621,18 +665,19 @@ class V3SchemaMigration:
                 if result:
                     series_id = result[0]
 
-            # 해상도 라벨
-            resolution = None
-            height = f.get("height")
-            if height:
-                if height >= 2160:
-                    resolution = "4K"
-                elif height >= 1080:
-                    resolution = "1080p"
-                elif height >= 720:
-                    resolution = "720p"
-                else:
-                    resolution = f"{height}p"
+            # 해상도 라벨 (resolution 문자열이 있으면 사용, 없으면 height에서 계산)
+            resolution = f.get("resolution")
+            if not resolution:
+                height = f.get("height")
+                if height:
+                    if height >= 2160:
+                        resolution = "4K"
+                    elif height >= 1080:
+                        resolution = "1080p"
+                    elif height >= 720:
+                        resolution = "720p"
+                    else:
+                        resolution = f"{height}p"
 
             display_title = f.get("display_title") if has_display_title else None
             headline = display_title or generate_episode_headline(
@@ -679,21 +724,41 @@ class V3SchemaMigration:
 
         logger.info("Clip 마이그레이션 시작...")
 
-        cursor.execute("""
-            SELECT
-                h.id, h.file_id, h.winner, h.pot_bb, h.is_all_in,
-                h.timecode_start_seconds, h.timecode_end_seconds,
-                h.display_title, h.players, h.tags, h.hand_number
-            FROM hands h
-        """)
+        # hands 테이블 스키마 동적 확인
+        cursor.execute("PRAGMA table_info(hands)")
+        hands_columns = {row[1] for row in cursor.fetchall()}
+
+        # 컬럼 이름 매핑 (다양한 스키마 버전 지원)
+        pot_col = "pot_size_bb" if "pot_size_bb" in hands_columns else "pot_bb"
+        start_col = "start_sec" if "start_sec" in hands_columns else "timecode_start_seconds"
+        end_col = "end_sec" if "end_sec" in hands_columns else "timecode_end_seconds"
+        has_display_title = "display_title" in hands_columns
+
+        select_cols = [
+            "h.id", "h.file_id", "h.winner",
+            f"h.{pot_col} as pot_bb",
+            "h.is_all_in",
+            f"h.{start_col} as timecode_start_seconds",
+            f"h.{end_col} as timecode_end_seconds",
+            "h.players", "h.tags", "h.hand_number"
+        ]
+        if has_display_title:
+            select_cols.append("h.display_title")
+
+        cursor.execute(f"SELECT {', '.join(select_cols)} FROM hands h")
         hands = cursor.fetchall()
 
-        for h in hands:
+        # 결과를 dict로 변환
+        col_names = [desc[0] for desc in cursor.description]
+
+        for row in hands:
+            h = dict(zip(col_names, row))
+
             # parent_episode_id 찾기
             parent_episode_id = None
             series_id = 1  # 기본값
 
-            if h["file_id"]:
+            if h.get("file_id"):
                 cursor.execute(
                     """
                     SELECT id, series_id FROM contents
@@ -701,21 +766,21 @@ class V3SchemaMigration:
                     """,
                     (h["file_id"],),
                 )
-                row = cursor.fetchone()
-                if row:
-                    parent_episode_id = row[0]
-                    series_id = row[1]
+                result = cursor.fetchone()
+                if result:
+                    parent_episode_id = result[0]
+                    series_id = result[1]
 
             # action_type 결정
             action_type = None
-            if h["is_all_in"]:
+            if h.get("is_all_in"):
                 action_type = "all_in"
 
-            headline = h["display_title"] or generate_headline(
-                winner=h["winner"],
-                pot_bb=h["pot_bb"],
+            headline = h.get("display_title") or generate_headline(
+                winner=h.get("winner"),
+                pot_bb=h.get("pot_bb"),
                 action_type=action_type,
-                hand_number=h["hand_number"],
+                hand_number=h.get("hand_number"),
             )
 
             cursor.execute(
@@ -732,12 +797,12 @@ class V3SchemaMigration:
                     headline,
                     None,  # subline
                     parent_episode_id,
-                    h["timecode_start_seconds"],
-                    h["timecode_end_seconds"],
-                    h["winner"],
-                    h["pot_bb"],
+                    h.get("timecode_start_seconds"),
+                    h.get("timecode_end_seconds"),
+                    h.get("winner"),
+                    h.get("pot_bb"),
                     action_type,
-                    h["id"],
+                    h.get("id"),
                 ),
             )
 
@@ -766,13 +831,21 @@ class V3SchemaMigration:
         except json.JSONDecodeError:
             players = [p.strip() for p in players_json.split(",") if p.strip()]
 
+        # players 테이블 스키마 확인 (id 컬럼 유무)
+        cursor.execute("PRAGMA table_info(players)")
+        player_columns = {row[1] for row in cursor.fetchall()}
+        has_id = "id" in player_columns
+
+        # id가 없으면 rowid 사용
+        id_col = "id" if has_id else "rowid"
+
         for i, player_name in enumerate(players):
             if not player_name:
                 continue
 
             # 플레이어 ID 찾기 또는 생성
             cursor.execute(
-                "SELECT id FROM players WHERE name = ?", (player_name,)
+                f"SELECT {id_col} FROM players WHERE name = ?", (player_name,)
             )
             row = cursor.fetchone()
 
