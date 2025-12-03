@@ -59,26 +59,16 @@ scripts.backup/
 *.md.backup
 nul
 
-# Claude 설정
-.claude/
-!.claude/scripts/
-!.claude/hooks/
-!.claude/plugins/
-!.claude/agents/
-!.claude/commands/
-!.claude/skills/
-!.claude/optimizer-config.json
-!.claude/evolution/
-!.claude/track.py
-!.claude/settings.json
+# Claude 설정 - 핵심 디렉토리는 추적
 .claude/evolution/.env
 .claude/evolution/data/
 .claude/evolution/feedback/*.jsonl
 .claude/improvement-suggestions.md
 .claude/optimizer-error.log
+.claude/plugins.old/
+.claude/settings.local.json
 .claude-global/
 .claude.backup-*/
-.claude/plugins.old/
 
 # Agent tracking data (local only)
 .agent-quality-v2.jsonl
