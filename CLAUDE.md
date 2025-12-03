@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-**Version**: 2.0.0 | **Updated**: 2025-12-03 | **Context**: Windows 10/11, PowerShell, Root: `D:\AI\claude01`
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+**Version**: 2.2.0 | **Updated**: 2025-12-03 | **Context**: Windows 10/11, PowerShell, Root: `D:\AI\claude01`
 
 ## 1. Critical Rules
 
@@ -80,20 +82,23 @@ PRE_WORK 승인 후:
 
 ### FINAL_CHECK (최종 검증) - 자동
 
-구현 완료 후 **최종 보고 전 필수**:
+구현 완료 후 **자동 실행 및 자동 진행**:
 
 1. **E2E 테스트**: Playwright/Cypress 또는 `webapp-testing` 스킬
-2. **100% 통과 필수**: 실패 시 수정 후 재실행 (최대 3회)
-3. **커밋 & 푸시**: `/commit` → `Closes #<issue>` 포함
-4. **최종 보고서**: 변경사항 + 테스트 결과 + PR 링크
+2. **100% 통과 필수**: 실패 시 자동 수정 (최대 3회)
+3. **자동 Phase 진행**: 통과 시 Phase 3→4→5 자동 진행
+4. **최종 보고서**: 모든 Phase 완료 후 보고
 
 ```
-## 작업 완료 보고
-- 유형: [신규 기능/버그 수정/리팩토링]
-- 이슈: #123 | PR: #456
-- 테스트: Unit 15/15, E2E 8/8 (100%)
-- 다음: PR 리뷰 대기
+✅ E2E 통과 → Phase 3 (버전) → Phase 4 (PR) → Phase 5 (Security)
+           → Phase 6 (배포) - 사용자 확인 대기
 ```
+
+**대기 조건 (다음 경우에만 멈춤)**:
+| 조건 | 동작 |
+|------|------|
+| 사용자 검증 필수 | 배포, 프로덕션 변경 시 확인 요청 |
+| 해결 불가능 판단 | 3회 실패, 환경 문제 시 수동 개입 요청 |
 
 ---
 
@@ -105,21 +110,68 @@ PRE_WORK 승인 후:
 | 0.5 | Task 분해 | `validate-phase-0.5.ps1` |
 | 1 | 구현 + 테스트 | `validate-phase-1.ps1` |
 | 2 | 테스트 통과 | `validate-phase-2.ps1` |
-| 2.5 | 코드 리뷰 | `/parallel-review` |
-| 3 | 버전 + CHANGELOG | `validate-phase-3.ps1` |
+| 2.5 | 코드 리뷰 + Security | `/parallel-review` + Security Audit |
+| 3 | 버전 자동 결정 | Conventional Commits 분석 |
 | 4 | PR 생성 | `validate-phase-4.ps1` |
-| 5 | E2E + Security | `validate-phase-5.ps1` |
-| 6 | 배포 | `validate-phase-6.ps1` |
+| 5 | 배포 | `validate-phase-5.ps1` (사용자 확인 필수) |
+
+### 버전 자동 결정 (Phase 3)
+
+| 커밋 타입 | 버전 변경 | 대기 여부 |
+|----------|----------|----------|
+| `fix:` | PATCH (0.0.X) | 자동 진행 |
+| `feat:` | MINOR (0.X.0) | 자동 진행 |
+| `BREAKING CHANGE:` | MAJOR (X.0.0) | ⏸️ 사용자 확인 |
+
+### 조건부 대기 (자동 진행 중지)
+
+| 조건 | 동작 |
+|------|------|
+| MAJOR 버전 변경 (Breaking) | ⏸️ 사용자 확인 대기 |
+| Critical/High 보안 취약점 | ⏸️ 사용자 확인 대기 |
+| 배포 (Phase 5) | ⏸️ 사용자 확인 대기 |
+| 3회 실패 | 수동 개입 요청 |
 
 ### 워크플로우 선택 기준
 
 | 상황 | 워크플로우 | 설명 |
 |------|-----------|------|
 | 단순 작업 | **Auto Workflow** | 버그 수정, 소규모 기능 (PRE→IMPL→FINAL) |
-| 복잡한 프로젝트 | **Phase Pipeline** | PRD 필요, 다수 파일 변경 (Phase 0→6) |
+| 복잡한 프로젝트 | **Phase Pipeline** | PRD 필요, 다수 파일 변경 (Phase 0→5) |
+| 자율 운영 | **Autopilot** | `/autopilot` - 이슈 자동 처리 |
 | 명시적 요청 | **Phase Pipeline** | "PRD 만들어줘", "Phase 0 시작" |
 
 > 상세: `docs/WORKFLOW_REFERENCE.md`
+
+### Autopilot 모드 (`/autopilot`)
+
+이슈 분석 및 **토큰 한도까지 연속 실행**:
+
+```
+/autopilot
+    ↓
+/init → /issues ─┬─ 이슈 있음 → 작업 실행 ─┐
+                 │                         │
+                 └─ 이슈 없음 ──────────────┤
+                         ↓                 │
+               /parallel-research          │
+                         ↓                 │
+               개선안 → 이슈 등록 ──────────┘
+                         ↓
+               반복 (토큰 한도까지)
+                         ↓
+               토큰 한도 → 세션 종료
+                         ↓
+               사용자가 /autopilot 입력 → 재개
+```
+
+| 원칙 | 설명 |
+|------|------|
+| 무한 반복 | 이슈 처리 → 없으면 생성 → 처리 → 반복 |
+| 토큰 한도 의존 | 토큰 소진 시 자동 종료 |
+| **수동 재개** | 세션 초기화 후 사용자가 `/autopilot` 입력 필요 |
+
+> 상세: `.claude/commands/autopilot.md`
 
 ---
 
@@ -127,6 +179,7 @@ PRE_WORK 승인 후:
 
 | 카테고리 | 주요 커맨드 |
 |----------|-------------|
+| **Autopilot** | `/autopilot` (자율 운영 모드) |
 | Planning | `/create-prd`, `/todo`, `/issues`, `/issue` |
 | Coding | `/tdd`, `/fix-issue`, `/parallel-dev` |
 | Testing | `/parallel-test`, `/parallel-review`, `/check`, `/api-test` |
@@ -135,7 +188,7 @@ PRE_WORK 승인 후:
 | Research | `/parallel-research`, `/issue-update` |
 | Analysis | `/optimize`, `/analyze-logs`, `/analyze-code` |
 
-> 전체 목록 (26개): `.claude/commands/`
+> 전체 목록 (27개): `.claude/commands/`
 
 ---
 
@@ -163,14 +216,31 @@ D:\AI\claude01\
 # 환경 설정
 $env:ANTHROPIC_API_KEY = "your-key"
 
-# 테스트
+# 테스트 (전체)
 pytest tests/ -v -m unit
+
+# 단일 테스트 파일
+pytest tests/test_parallel_workflow.py -v
+
+# 특정 테스트 함수
+pytest tests/test_parallel_workflow.py::test_function_name -v
+
+# 커버리지
+pytest tests/ -v --cov=src --cov-report=term
 
 # Phase 상태
 .\scripts\phase-status.ps1
 
 # Bypass 모드
 .\start-claude.bat
+```
+
+### Lint & Format (archive-analyzer)
+
+```powershell
+ruff check D:\AI\claude01\archive-analyzer\src
+black --check D:\AI\claude01\archive-analyzer\src
+mypy D:\AI\claude01\archive-analyzer\src\archive_analyzer
 ```
 
 ### 서브프로젝트 실행
