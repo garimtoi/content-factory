@@ -1,16 +1,16 @@
 # Database Schema Documentation
 
 > **Last Updated**: 2025-12-03
-> **Version**: 2.2.0
+> **Version**: 2.4.0
 
 이 문서는 archive-analyzer와 연동 레포지토리 간 DB 스키마를 정의합니다.
 **스키마 변경 시 반드시 이 문서를 업데이트하고 관련 레포에 공유해야 합니다.**
 
-### 테이블 요약 (총 31개)
+### 테이블 요약 (총 32개)
 
 | 카테고리 | 테이블 | 설명 |
 |----------|--------|------|
-| **Core** | catalogs, subcatalogs, tournaments, events, files, hands, players | 콘텐츠 계층 구조 |
+| **Core** | catalogs, subcatalogs, tournaments, events, files, hands, players, id_mapping | 콘텐츠 계층 구조 + ID 매핑 |
 | **User** | users, user_sessions, user_preferences, watch_progress, view_events | 사용자 및 시청 기록 |
 | **Recommendation** | recommendation_cache, trending_scores, home_rows, user_home_rows | 추천 시스템 |
 | **Artwork** | artwork_variants, artwork_selections | 썸네일 개인화 |
@@ -100,6 +100,7 @@
 | **display_title** | VARCHAR(300) | **시청자용 표시 제목** |
 | **title_source** | VARCHAR(20) | **제목 생성 방식 (rule_based/ai_generated/manual)** |
 | **title_verified** | BOOLEAN | **수동 검수 완료 여부** |
+| **varchar_id** | VARCHAR(50) | **원본 VARCHAR PK (정수 PK 마이그레이션용)** |
 
 #### subcatalogs
 서브 카탈로그 (다단계 계층 구조): 자기 참조를 통한 무제한 깊이 지원
@@ -125,6 +126,7 @@
 | search_vector | TEXT | 검색용 벡터 |
 | **display_title** | VARCHAR(300) | **시청자용 표시 제목** |
 | **title_source** | VARCHAR(20) | **제목 생성 방식** |
+| **varchar_id** | VARCHAR(100) | **원본 VARCHAR PK (정수 PK 마이그레이션용)** |
 | **title_verified** | BOOLEAN | **수동 검수 완료 여부** |
 
 ##### 계층 구조 예시
@@ -228,6 +230,7 @@ SELECT * FROM parents ORDER BY depth;
 | **display_subtitle** | VARCHAR(300) | **시청자용 부제목** |
 | **title_source** | VARCHAR(20) | **제목 생성 방식 (rule_based/ai_generated/manual)** |
 | **title_verified** | BOOLEAN | **수동 검수 완료 여부** |
+| **varchar_id** | VARCHAR(200) | **원본 VARCHAR PK (정수 PK 마이그레이션용)** |
 
 #### hands
 핸드: 포커 핸드 정보
@@ -270,6 +273,21 @@ SELECT * FROM parents ORDER BY depth;
 | first_seen_at | TIMESTAMP | 플레이어 첫 등록 시간 |
 | last_seen_at | TIMESTAMP | 마지막 활동 시간 |
 | search_vector | TEXT | 검색용 벡터 |
+
+#### id_mapping ✨ NEW
+ID 매핑 테이블 (VARCHAR → INTEGER PK 마이그레이션 추적)
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| table_name | VARCHAR(50) PK | 테이블명 (catalogs, subcatalogs, files) |
+| old_id | VARCHAR(200) PK | 원본 VARCHAR ID |
+| new_id | INTEGER | 신규 정수 ID (현재는 해시값) |
+| created_at | TIMESTAMP | 생성일시 |
+
+**인덱스**: `idx_id_mapping_new`
+
+> **Note**: 정수 PK 마이그레이션 1단계. 현재 `varchar_id` 컬럼에 원본 ID를 보존 중.
+> 향후 실제 정수 PK 전환 시 이 테이블을 활용하여 FK 업데이트 수행.
 
 ---
 
@@ -1931,6 +1949,7 @@ async def get_collection_items(collection_id: str, limit: int = 50):
 
 | 날짜 | 버전 | 변경 내용 |
 |------|------|----------|
+| 2025-12-03 | 2.4.0 | **정수 PK 마이그레이션 1단계**: `varchar_id` 컬럼 추가 (catalogs, subcatalogs, files), `id_mapping` 테이블 |
 | 2025-12-03 | 2.2.0 | 사용자/인증/검색 시스템 테이블 문서화 (Section 10, 11), players 테이블 컬럼 추가 |
 | 2025-12-03 | 2.1.0 | 멀티 카탈로그 시스템 추가 (Section 9) |
 | 2025-12-03 | 2.0.0 | 추천 시스템 스키마 추가 (Section 8) |
