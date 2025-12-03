@@ -320,7 +320,7 @@ class ArchiveHandsSync:
         return stats
 
     def _upsert_hand(self, record: Dict[str, Any]):
-        """hands 테이블에 upsert"""
+        """hands 테이블에 upsert + 정규화 테이블 업데이트"""
         # file_id + hand_number로 중복 체크
         cursor = self.conn.execute(
             "SELECT id FROM hands WHERE file_id = ? AND hand_number = ?",
@@ -329,7 +329,8 @@ class ArchiveHandsSync:
         existing = cursor.fetchone()
 
         if existing:
-            # UPDATE
+            hand_id = existing["id"]
+            # UPDATE hands (players, tags JSON 컬럼은 하위 호환성 유지)
             self.conn.execute("""
                 UPDATE hands SET
                     start_sec = ?,
@@ -348,11 +349,11 @@ class ArchiveHandsSync:
                 record["players"],
                 record["tags"],
                 record["title_source"],
-                existing["id"],
+                hand_id,
             ))
         else:
-            # INSERT
-            self.conn.execute("""
+            # INSERT hands
+            cursor = self.conn.execute("""
                 INSERT INTO hands (
                     file_id, hand_number, start_sec, end_sec,
                     highlight_score, cards_shown, players, tags, title_source
@@ -368,6 +369,50 @@ class ArchiveHandsSync:
                 record["tags"],
                 record["title_source"],
             ))
+            hand_id = cursor.lastrowid
+
+        # 정규화 테이블 업데이트 (hand_players, hand_tags)
+        self._sync_normalized_tables(hand_id, record)
+
+    def _sync_normalized_tables(self, hand_id: int, record: Dict[str, Any]):
+        """정규화 테이블 (hand_players, hand_tags) 동기화"""
+        # 1. hand_players 동기화
+        if record.get("players"):
+            try:
+                players = json.loads(record["players"])
+                if isinstance(players, list):
+                    # 기존 레코드 삭제 후 재삽입
+                    self.conn.execute(
+                        "DELETE FROM hand_players WHERE hand_id = ?",
+                        (hand_id,)
+                    )
+                    for position, player_name in enumerate(players, 1):
+                        if player_name and isinstance(player_name, str):
+                            self.conn.execute("""
+                                INSERT INTO hand_players (hand_id, player_name, position)
+                                VALUES (?, ?, ?)
+                            """, (hand_id, player_name.strip(), position))
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # 2. hand_tags 동기화
+        if record.get("tags"):
+            try:
+                tags = json.loads(record["tags"])
+                if isinstance(tags, list):
+                    # 기존 레코드 삭제 후 재삽입
+                    self.conn.execute(
+                        "DELETE FROM hand_tags WHERE hand_id = ?",
+                        (hand_id,)
+                    )
+                    for tag in tags:
+                        if tag and isinstance(tag, str):
+                            self.conn.execute("""
+                                INSERT OR IGNORE INTO hand_tags (hand_id, tag)
+                                VALUES (?, ?)
+                            """, (hand_id, tag.strip()))
+            except (json.JSONDecodeError, TypeError):
+                pass
 
     def sync_all(self, dry_run: bool = False):
         """모든 워크시트 동기화"""

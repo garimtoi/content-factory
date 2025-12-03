@@ -1,16 +1,16 @@
 # Database Schema Documentation
 
 > **Last Updated**: 2025-12-03
-> **Version**: 2.4.0
+> **Version**: 2.5.0
 
 이 문서는 archive-analyzer와 연동 레포지토리 간 DB 스키마를 정의합니다.
 **스키마 변경 시 반드시 이 문서를 업데이트하고 관련 레포에 공유해야 합니다.**
 
-### 테이블 요약 (총 32개)
+### 테이블 요약 (총 34개)
 
 | 카테고리 | 테이블 | 설명 |
 |----------|--------|------|
-| **Core** | catalogs, subcatalogs, tournaments, events, files, hands, players, id_mapping | 콘텐츠 계층 구조 + ID 매핑 |
+| **Core** | catalogs, subcatalogs, tournaments, events, files, hands, players, hand_players, hand_tags, id_mapping | 콘텐츠 계층 구조 + 정규화 |
 | **User** | users, user_sessions, user_preferences, watch_progress, view_events | 사용자 및 시청 기록 |
 | **Recommendation** | recommendation_cache, trending_scores, home_rows, user_home_rows | 추천 시스템 |
 | **Artwork** | artwork_variants, artwork_selections | 썸네일 개인화 |
@@ -257,6 +257,37 @@ SELECT * FROM parents ORDER BY depth;
 | **display_title** | VARCHAR(300) | **시청자용 표시 제목** |
 | **title_source** | VARCHAR(20) | **제목 생성 방식 (rule_based/ai_generated/manual)** |
 | **title_verified** | BOOLEAN | **수동 검수 완료 여부** |
+
+> **Note**: `players`, `tags` JSON 컬럼은 하위 호환성을 위해 유지됩니다.
+> 새 데이터는 `hand_players`, `hand_tags` 정규화 테이블과 동시에 업데이트됩니다.
+
+#### hand_players ✨ NEW
+핸드-플레이어 관계 테이블 (hands.players JSON 정규화)
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| id | INTEGER PK | 고유 식별자 |
+| hand_id | INTEGER FK | 핸드 ID (hands.id) |
+| player_name | VARCHAR(100) | 플레이어 이름 |
+| position | INTEGER | 순서 (1부터 시작) |
+| created_at | TIMESTAMP | 생성일시 |
+
+**인덱스**: `idx_hand_players_hand`, `idx_hand_players_player`
+**FK**: `hand_id` → `hands(id) ON DELETE CASCADE`
+
+#### hand_tags ✨ NEW
+핸드-태그 관계 테이블 (hands.tags JSON 정규화)
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| id | INTEGER PK | 고유 식별자 |
+| hand_id | INTEGER FK | 핸드 ID (hands.id) |
+| tag | VARCHAR(50) | 태그명 (preflop_allin, bluff 등) |
+| created_at | TIMESTAMP | 생성일시 |
+
+**인덱스**: `idx_hand_tags_hand`, `idx_hand_tags_tag`
+**유니크 제약**: `(hand_id, tag)` 조합 유일
+**FK**: `hand_id` → `hands(id) ON DELETE CASCADE`
 
 #### players
 플레이어: 포커 플레이어 정보
@@ -1949,7 +1980,9 @@ async def get_collection_items(collection_id: str, limit: int = 50):
 
 | 날짜 | 버전 | 변경 내용 |
 |------|------|----------|
+| 2025-12-03 | 2.5.0 | **스키마 통합 업데이트**: #12 JSON 정규화 + #13 정수 PK 문서 통합 |
 | 2025-12-03 | 2.4.0 | **정수 PK 마이그레이션 1단계**: `varchar_id` 컬럼 추가 (catalogs, subcatalogs, files), `id_mapping` 테이블 |
+| 2025-12-03 | 2.3.0 | **JSON 정규화 테이블 추가**: `hand_players`, `hand_tags` 테이블 (hands.players/tags JSON → 관계형) |
 | 2025-12-03 | 2.2.0 | 사용자/인증/검색 시스템 테이블 문서화 (Section 10, 11), players 테이블 컬럼 추가 |
 | 2025-12-03 | 2.1.0 | 멀티 카탈로그 시스템 추가 (Section 9) |
 | 2025-12-03 | 2.0.0 | 추천 시스템 스키마 추가 (Section 8) |
