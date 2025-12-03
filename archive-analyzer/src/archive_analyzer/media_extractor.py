@@ -13,6 +13,8 @@ import logging
 import os
 import subprocess
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -453,6 +455,7 @@ class MediaMetadataExtractor:
     """미디어 메타데이터 일괄 추출기
 
     아카이브의 모든 비디오 파일에서 메타데이터를 추출합니다.
+    #23: 병렬 처리 지원 추가
     """
 
     def __init__(
@@ -461,6 +464,7 @@ class MediaMetadataExtractor:
         database,  # Database 타입 (순환 임포트 방지)
         ffprobe_path: str = "ffprobe",
         batch_size: int = 10,
+        max_workers: int = 4,
     ):
         """
         Args:
@@ -468,17 +472,20 @@ class MediaMetadataExtractor:
             database: 데이터베이스 관리자
             ffprobe_path: FFprobe 경로
             batch_size: 배치 저장 크기
+            max_workers: 병렬 처리 워커 수 (#23)
         """
         self.connector = connector
         self.database = database
         self.smb_extractor = SMBMediaExtractor(connector, ffprobe_path)
         self.batch_size = batch_size
+        self.max_workers = max_workers
 
         self._progress_callback: Optional[Callable[[ExtractionProgress], None]] = None
         self._start_time: Optional[datetime] = None
         self._processed = 0
         self._successful = 0
         self._failed = 0
+        self._lock = threading.Lock()  # #23 - 스레드 안전성
 
     def set_progress_callback(self, callback: Callable[[ExtractionProgress], None]) -> None:
         """진행률 콜백 설정"""
@@ -488,12 +495,14 @@ class MediaMetadataExtractor:
         self,
         file_type: str = "video",
         skip_existing: bool = True,
+        parallel: bool = True,
     ) -> Dict[str, Any]:
         """모든 비디오 파일에서 메타데이터 추출
 
         Args:
             file_type: 추출할 파일 유형 (기본: video)
             skip_existing: 이미 추출된 파일 건너뛰기
+            parallel: 병렬 처리 사용 여부 (#23, 기본: True)
 
         Returns:
             추출 결과 요약
@@ -516,38 +525,23 @@ class MediaMetadataExtractor:
             existing_ids = self.database.get_existing_media_file_ids(file_ids)
             logger.info(f"Already extracted: {len(existing_ids)} files (skipping)")
 
-        results: List[MediaInfo] = []
-
+        # 처리할 파일 필터링
+        files_to_process = []
         for file_record in files:
-            # 이미 추출된 파일 건너뛰기 (#24 - 배치 쿼리 사용)
             if skip_existing and file_record.id in existing_ids:
-                self._processed += 1
-                self._successful += 1
-                continue
-
-            try:
-                # 메타데이터 추출
-                info = self.smb_extractor.extract(file_record.path, file_id=file_record.id)
-
-                # 데이터베이스 저장
-                self.database.insert_media_info(info)
-
-                if info.extraction_status == "success":
+                with self._lock:
+                    self._processed += 1
                     self._successful += 1
-                else:
-                    self._failed += 1
+            else:
+                files_to_process.append(file_record)
 
-                results.append(info)
+        logger.info(f"Files to process: {len(files_to_process)}")
 
-            except Exception as e:
-                logger.error(f"Error processing {file_record.path}: {e}")
-                self._failed += 1
-
-            self._processed += 1
-
-            # 진행률 알림
-            if self._progress_callback:
-                self._notify_progress(total_files, file_record.path)
+        # #23 병렬 처리
+        if parallel and len(files_to_process) > 1 and self.max_workers > 1:
+            self._extract_parallel(files_to_process, total_files)
+        else:
+            self._extract_sequential(files_to_process, total_files)
 
         # 결과 요약
         duration = (datetime.now() - self._start_time).total_seconds()
@@ -560,6 +554,86 @@ class MediaMetadataExtractor:
             "duration_seconds": duration,
             "files_per_second": self._processed / duration if duration > 0 else 0,
         }
+
+    def _extract_single(self, file_record) -> Optional[MediaInfo]:
+        """단일 파일 메타데이터 추출 (#23 워커용)
+
+        Args:
+            file_record: 파일 레코드
+
+        Returns:
+            MediaInfo 또는 None (실패 시)
+        """
+        try:
+            info = self.smb_extractor.extract(file_record.path, file_id=file_record.id)
+            return info
+        except Exception as e:
+            logger.error(f"Error processing {file_record.path}: {e}")
+            return None
+
+    def _extract_sequential(self, files, total_files: int) -> None:
+        """순차 처리 (기존 로직)"""
+        for file_record in files:
+            info = self._extract_single(file_record)
+
+            if info is not None:
+                self.database.insert_media_info(info)
+                if info.extraction_status == "success":
+                    self._successful += 1
+                else:
+                    self._failed += 1
+            else:
+                self._failed += 1
+
+            self._processed += 1
+
+            if self._progress_callback:
+                self._notify_progress(total_files, file_record.path)
+
+    def _extract_parallel(self, files, total_files: int) -> None:
+        """병렬 처리 (#23)
+
+        Args:
+            files: 처리할 파일 목록
+            total_files: 전체 파일 수 (진행률 계산용)
+        """
+        logger.info(f"Starting parallel extraction with {self.max_workers} workers")
+
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # 작업 제출
+            future_to_file = {
+                executor.submit(self._extract_single, f): f for f in files
+            }
+
+            # 완료된 작업 처리
+            for future in as_completed(future_to_file):
+                file_record = future_to_file[future]
+
+                try:
+                    info = future.result()
+
+                    if info is not None:
+                        # DB 저장은 스레드 안전하게 순차 처리
+                        self.database.insert_media_info(info)
+                        with self._lock:
+                            if info.extraction_status == "success":
+                                self._successful += 1
+                            else:
+                                self._failed += 1
+                    else:
+                        with self._lock:
+                            self._failed += 1
+
+                except Exception as e:
+                    logger.error(f"Worker error for {file_record.path}: {e}")
+                    with self._lock:
+                        self._failed += 1
+
+                with self._lock:
+                    self._processed += 1
+
+                if self._progress_callback:
+                    self._notify_progress(total_files, file_record.path)
 
     def _notify_progress(self, total: int, current_path: str) -> None:
         """진행률 알림"""
