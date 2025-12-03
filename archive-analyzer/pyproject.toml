@@ -76,6 +76,11 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+markers = [
+    "integration: Integration tests (end-to-end workflows)",
+    "unit: Unit tests (isolated component tests)",
+    "slow: Slow tests (require external resources)",
+]
 
 [tool.black]
 line-length = 100
