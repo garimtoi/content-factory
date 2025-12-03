@@ -824,6 +824,33 @@ class Database:
         )
         return cursor.fetchone() is not None
 
+    def get_existing_media_file_ids(self, file_ids: Optional[List[int]] = None) -> set:
+        """성공적으로 추출된 미디어 정보가 있는 file_id 목록 반환 (#24 N+1 최적화)
+
+        Args:
+            file_ids: 확인할 file_id 목록. None이면 전체 조회
+
+        Returns:
+            추출 완료된 file_id의 set
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        if file_ids is None:
+            cursor.execute(
+                "SELECT file_id FROM media_info WHERE extraction_status = 'success'"
+            )
+        else:
+            if not file_ids:
+                return set()
+            placeholders = ",".join("?" * len(file_ids))
+            cursor.execute(
+                f"SELECT file_id FROM media_info WHERE extraction_status = 'success' AND file_id IN ({placeholders})",
+                file_ids,
+            )
+
+        return {row[0] for row in cursor.fetchall()}
+
     def get_media_info_count(self, status: Optional[str] = None) -> int:
         """미디어 정보 수 조회"""
         conn = self._get_connection()

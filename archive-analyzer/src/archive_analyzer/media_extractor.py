@@ -509,11 +509,18 @@ class MediaMetadataExtractor:
 
         logger.info(f"Starting metadata extraction for {total_files} {file_type} files")
 
+        # #24 N+1 최적화: 이미 추출된 file_id들을 한 번에 조회
+        existing_ids: set = set()
+        if skip_existing:
+            file_ids = [f.id for f in files if f.id is not None]
+            existing_ids = self.database.get_existing_media_file_ids(file_ids)
+            logger.info(f"Already extracted: {len(existing_ids)} files (skipping)")
+
         results: List[MediaInfo] = []
 
         for file_record in files:
-            # 이미 추출된 파일 건너뛰기
-            if skip_existing and self.database.has_media_info(file_record.id):
+            # 이미 추출된 파일 건너뛰기 (#24 - 배치 쿼리 사용)
+            if skip_existing and file_record.id in existing_ids:
                 self._processed += 1
                 self._successful += 1
                 continue
