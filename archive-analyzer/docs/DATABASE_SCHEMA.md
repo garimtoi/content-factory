@@ -1979,13 +1979,14 @@ async def get_collection_items(collection_id: str, limit: int = 50):
 
 ## 12. V3.0 스키마 설계 (Video Card 중심)
 
-> ⚠️ **구현 상태**: 설계 문서만 존재. 실제 테이블/마이그레이션 미구현.
+> ✅ **구현 상태**: 마이그레이션 스크립트 구현 완료
 >
-> 구현 예정 항목:
-> - [ ] `scripts/migrate_v3_schema.py` 마이그레이션 스크립트
-> - [ ] `database.py` DDL 추가
-> - [ ] 기존 데이터 마이그레이션 (subcatalogs+tournaments+events → series)
-> - [ ] 호환성 뷰 (v_files, v_hands)
+> 구현 항목:
+> - [x] `scripts/migrate_v3_schema.py` 마이그레이션 스크립트
+> - [x] 새 테이블 DDL (series, contents, content_players, content_tags, tags)
+> - [x] 기존 데이터 마이그레이션 (subcatalogs+tournaments+events → series)
+> - [x] 호환성 뷰 (v_files, v_hands)
+> - [x] Headline 자동 생성 로직
 
 ### 12.1 설계 배경
 
