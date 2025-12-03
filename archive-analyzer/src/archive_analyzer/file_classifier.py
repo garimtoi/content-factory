@@ -3,13 +3,14 @@
 파일 확장자를 기반으로 미디어 파일 유형을 분류합니다.
 """
 
-from enum import Enum
-from typing import Set, Optional
 import os
+from enum import Enum
+from typing import Set
 
 
 class FileType(Enum):
     """파일 유형 열거형"""
+
     VIDEO = "video"
     AUDIO = "audio"
     SUBTITLE = "subtitle"
@@ -21,25 +22,73 @@ class FileType(Enum):
 # 파일 유형별 확장자 매핑
 FILE_TYPE_EXTENSIONS: dict[FileType, Set[str]] = {
     FileType.VIDEO: {
-        '.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm',
-        '.m4v', '.ts', '.mts', '.m2ts', '.vob', '.mpg', '.mpeg',
-        '.3gp', '.ogv', '.rm', '.rmvb', '.divx', '.f4v',
-        '.mxf',  # Professional broadcast format (Material eXchange Format)
+        ".mp4",
+        ".mkv",
+        ".avi",
+        ".mov",
+        ".wmv",
+        ".flv",
+        ".webm",
+        ".m4v",
+        ".ts",
+        ".mts",
+        ".m2ts",
+        ".vob",
+        ".mpg",
+        ".mpeg",
+        ".3gp",
+        ".ogv",
+        ".rm",
+        ".rmvb",
+        ".divx",
+        ".f4v",
+        ".mxf",  # Professional broadcast format (Material eXchange Format)
     },
     FileType.AUDIO: {
-        '.mp3', '.aac', '.flac', '.wav', '.m4a', '.ogg', '.wma',
-        '.opus', '.ape', '.alac', '.aiff', '.ac3', '.dts', '.pcm'
+        ".mp3",
+        ".aac",
+        ".flac",
+        ".wav",
+        ".m4a",
+        ".ogg",
+        ".wma",
+        ".opus",
+        ".ape",
+        ".alac",
+        ".aiff",
+        ".ac3",
+        ".dts",
+        ".pcm",
     },
     FileType.SUBTITLE: {
-        '.srt', '.ass', '.ssa', '.vtt', '.sub', '.idx', '.sup',
-        '.smi', '.sami', '.txt', '.lrc'
+        ".srt",
+        ".ass",
+        ".ssa",
+        ".vtt",
+        ".sub",
+        ".idx",
+        ".sup",
+        ".smi",
+        ".sami",
+        ".txt",
+        ".lrc",
     },
-    FileType.METADATA: {
-        '.nfo', '.xml', '.json', '.yaml', '.yml'
-    },
+    FileType.METADATA: {".nfo", ".xml", ".json", ".yaml", ".yml"},
     FileType.IMAGE: {
-        '.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tiff',
-        '.tif', '.ico', '.svg', '.heic', '.heif', '.raw', '.cr2'
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".gif",
+        ".bmp",
+        ".tiff",
+        ".tif",
+        ".ico",
+        ".svg",
+        ".heic",
+        ".heif",
+        ".raw",
+        ".cr2",
     },
 }
 
@@ -155,8 +204,8 @@ class FileClassifier:
             file_type: 파일 유형
         """
         ext = extension.lower()
-        if not ext.startswith('.'):
-            ext = '.' + ext
+        if not ext.startswith("."):
+            ext = "." + ext
         self._custom_extensions[ext] = file_type
 
     def classify(self, filename: str) -> FileType:

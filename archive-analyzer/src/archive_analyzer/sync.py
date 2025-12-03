@@ -9,13 +9,12 @@ archive.db 데이터를 pokervod.db로 동기화합니다.
 
 import hashlib
 import logging
-import os
 import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SyncConfig:
     """동기화 설정"""
+
     archive_db: str = "data/output/archive.db"
     pokervod_db: str = "d:/AI/claude01/qwen_hand_analysis/data/pokervod.db"
 
@@ -37,6 +37,7 @@ class SyncConfig:
 @dataclass
 class SyncResult:
     """동기화 결과"""
+
     inserted: int = 0
     updated: int = 0
     skipped: int = 0
@@ -64,33 +65,27 @@ MULTILEVEL_PATTERNS = [
     (r"WSOP/WSOP-BR/WSOP-LAS\s?VEGAS", "WSOP", "wsop-las-vegas", 2),
     # WSOP-BR 자체 (depth=1)
     (r"WSOP/WSOP-BR", "WSOP", "wsop-br", 1),
-
     # WSOP Archive 하위 (depth=2~3)
     (r"WSOP/WSOP\s?ARCHIVE/(1973|19[789]\d|200[0-2])", "WSOP", "wsop-archive-1973-2002", 2),
     (r"WSOP/WSOP\s?ARCHIVE/(200[3-9]|2010)", "WSOP", "wsop-archive-2003-2010", 2),
     (r"WSOP/WSOP\s?ARCHIVE/(201[1-6])", "WSOP", "wsop-archive-2011-2016", 2),
     (r"WSOP/WSOP\s?ARCHIVE", "WSOP", "wsop-archive", 1),
-
     # WSOP Circuit/Super Circuit (depth=1)
     (r"WSOP/WSOP-C", "WSOP", "wsop-circuit", 1),
     (r"WSOP/WSOP-SC", "WSOP", "wsop-super-circuit", 1),
-
     # HCL (depth=1)
     (r"HCL/(\d{4})", "HCL", "hcl-{year}", 1),
     (r"HCL/.*[Cc]lip", "HCL", "hcl-clips", 1),
     (r"HCL/", "HCL", None, 0),
-
     # PAD (depth=1)
     (r"PAD/[Ss](?:eason\s?)?12", "PAD", "pad-s12", 1),
     (r"PAD/[Ss](?:eason\s?)?13", "PAD", "pad-s13", 1),
     (r"PAD/", "PAD", None, 0),
-
     # MPP (depth=1)
     (r"MPP/.*1\s?[Mm]", "MPP", "mpp-1m", 1),
     (r"MPP/.*2\s?[Mm]", "MPP", "mpp-2m", 1),
     (r"MPP/.*5\s?[Mm]", "MPP", "mpp-5m", 1),
     (r"MPP/", "MPP", None, 0),
-
     # GGMillions (depth=1)
     (r"GGMillions/", "GGMillions", "ggmillions-main", 1),
 ]
@@ -128,6 +123,7 @@ def classify_path(path: str) -> Tuple[str, Optional[str]]:
 @dataclass
 class SubcatalogMatch:
     """다단계 서브카탈로그 매칭 결과"""
+
     catalog_id: str
     subcatalog_id: Optional[str]
     depth: int
@@ -144,6 +140,8 @@ class SubcatalogMatch:
 def classify_path_multilevel(path: str) -> SubcatalogMatch:
     """경로에서 다단계 서브카탈로그 정보 추출
 
+    #37 - 가장 긴 매칭(가장 구체적인 패턴) 선택으로 패턴 순서 의존성 제거
+
     Args:
         path: 파일 경로
 
@@ -152,20 +150,32 @@ def classify_path_multilevel(path: str) -> SubcatalogMatch:
     """
     normalized = path.replace("\\", "/")
 
+    best_match = None
+    best_match_length = 0
+    best_result = None
+
     for pattern, catalog, subcatalog_template, depth in MULTILEVEL_PATTERNS:
         match = re.search(pattern, normalized, re.IGNORECASE)
         if match:
-            year = None
-            # 연도 캡처 그룹이 있으면 추출
-            if match.groups() and match.group(1).isdigit():
-                year = match.group(1)
+            match_length = len(match.group(0))
+            if match_length > best_match_length:
+                best_match_length = match_length
+                best_match = match
+                best_result = (catalog, subcatalog_template, depth)
 
-            return SubcatalogMatch(
-                catalog_id=catalog,
-                subcatalog_id=subcatalog_template,
-                depth=depth,
-                year=year,
-            )
+    if best_match and best_result:
+        catalog, subcatalog_template, depth = best_result
+        year = None
+        # 연도 캡처 그룹이 있으면 추출
+        if best_match.groups() and best_match.group(1).isdigit():
+            year = best_match.group(1)
+
+        return SubcatalogMatch(
+            catalog_id=catalog,
+            subcatalog_id=subcatalog_template,
+            depth=depth,
+            year=year,
+        )
 
     return SubcatalogMatch(catalog_id="OTHER", subcatalog_id=None, depth=0)
 
@@ -189,6 +199,19 @@ class SyncService:
     def __init__(self, config: Optional[SyncConfig] = None):
         self.config = config or SyncConfig()
         self._validate_paths()
+        self._ensure_indexes()
+
+    def _ensure_indexes(self) -> None:
+        """pokervod.db 인덱스 생성 (#40 - nas_path 인덱스 추가)"""
+        try:
+            conn = sqlite3.connect(self.config.pokervod_db)
+            cursor = conn.cursor()
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_nas_path ON files(nas_path)")
+            conn.commit()
+            conn.close()
+            logger.debug("pokervod.db 인덱스 확인 완료")
+        except Exception as e:
+            logger.warning(f"인덱스 생성 실패: {e}")
 
     def _validate_paths(self) -> None:
         """DB 경로 유효성 검증"""
@@ -224,7 +247,8 @@ class SyncService:
         try:
             # archive.db에서 비디오 파일 조회 (media_info 조인)
             src_cursor = src_conn.cursor()
-            src_cursor.execute("""
+            src_cursor.execute(
+                """
                 SELECT
                     f.path,
                     f.filename,
@@ -238,7 +262,8 @@ class SyncService:
                 FROM files f
                 LEFT JOIN media_info m ON f.id = m.file_id
                 WHERE f.file_type = 'video'
-            """)
+            """
+            )
 
             files = src_cursor.fetchall()
             logger.info(f"동기화 대상 파일: {len(files)}개")
@@ -256,15 +281,15 @@ class SyncService:
 
                     # 기존 레코드 확인
                     dst_cursor.execute(
-                        "SELECT id, updated_at FROM files WHERE nas_path = ?",
-                        (nas_path,)
+                        "SELECT id, updated_at FROM files WHERE nas_path = ?", (nas_path,)
                     )
                     existing = dst_cursor.fetchone()
 
                     if existing:
                         # 업데이트
                         if not dry_run:
-                            dst_cursor.execute("""
+                            dst_cursor.execute(
+                                """
                                 UPDATE files SET
                                     size_bytes = ?,
                                     duration_sec = ?,
@@ -274,53 +299,78 @@ class SyncService:
                                     bitrate_kbps = ?,
                                     updated_at = ?
                                 WHERE nas_path = ?
-                            """, (
-                                file_row["size_bytes"],
-                                file_row["duration_seconds"],
-                                resolution,
-                                file_row["codec"],
-                                file_row["fps"],
-                                file_row["bitrate_kbps"],
-                                datetime.now().isoformat(),
-                                nas_path,
-                            ))
+                            """,
+                                (
+                                    file_row["size_bytes"],
+                                    file_row["duration_seconds"],
+                                    resolution,
+                                    file_row["codec"],
+                                    file_row["fps"],
+                                    file_row["bitrate_kbps"],
+                                    datetime.now().isoformat(),
+                                    nas_path,
+                                ),
+                            )
                         result.updated += 1
                     else:
                         # 새로 삽입
                         if not dry_run:
-                            dst_cursor.execute("""
+                            dst_cursor.execute(
+                                """
                                 INSERT INTO files (
                                     id, nas_path, filename, size_bytes,
                                     duration_sec, resolution, codec, fps, bitrate_kbps,
                                     analysis_status, created_at, updated_at
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """, (
-                                file_id,
-                                nas_path,
-                                file_row["filename"],
-                                file_row["size_bytes"],
-                                file_row["duration_seconds"],
-                                resolution,
-                                file_row["codec"],
-                                file_row["fps"],
-                                file_row["bitrate_kbps"],
-                                self.config.default_analysis_status,
-                                datetime.now().isoformat(),
-                                datetime.now().isoformat(),
-                            ))
+                            """,
+                                (
+                                    file_id,
+                                    nas_path,
+                                    file_row["filename"],
+                                    file_row["size_bytes"],
+                                    file_row["duration_seconds"],
+                                    resolution,
+                                    file_row["codec"],
+                                    file_row["fps"],
+                                    file_row["bitrate_kbps"],
+                                    self.config.default_analysis_status,
+                                    datetime.now().isoformat(),
+                                    datetime.now().isoformat(),
+                                ),
+                            )
                         result.inserted += 1
 
                 except Exception as e:
                     result.errors.append(f"{file_row['path']}: {str(e)}")
                     logger.error(f"동기화 오류: {file_row['path']} - {e}")
 
+            # 트랜잭션 커밋 (#33 - 롤백 로직 추가)
             if not dry_run:
-                dst_conn.commit()
+                if (
+                    len(result.errors) > 0
+                    and len(result.errors) > (result.inserted + result.updated) * 0.5
+                ):
+                    # 에러가 50% 이상이면 롤백
+                    logger.warning(f"에러율 높음 ({len(result.errors)}건), 롤백 실행")
+                    dst_conn.rollback()
+                    result.inserted = 0
+                    result.updated = 0
+                else:
+                    dst_conn.commit()
 
             logger.info(
                 f"동기화 완료: 삽입 {result.inserted}, "
                 f"업데이트 {result.updated}, 오류 {len(result.errors)}"
             )
+
+        except Exception as e:
+            # 예상치 못한 오류 시 롤백
+            logger.exception(f"동기화 중 치명적 오류 발생: {e}")
+            try:
+                dst_conn.rollback()
+            except Exception:
+                pass
+            raise
 
         finally:
             src_conn.close()
@@ -372,24 +422,24 @@ class SyncService:
                 dst_cursor.execute("SELECT id FROM catalogs WHERE id = ?", (catalog_id,))
                 if not dst_cursor.fetchone():
                     if not dry_run:
-                        dst_cursor.execute("""
+                        dst_cursor.execute(
+                            """
                             INSERT INTO catalogs (id, name, created_at, updated_at)
                             VALUES (?, ?, ?, ?)
-                        """, (
-                            catalog_id,
-                            catalog_id,  # name = id
-                            datetime.now().isoformat(),
-                            datetime.now().isoformat(),
-                        ))
+                        """,
+                            (
+                                catalog_id,
+                                catalog_id,  # name = id
+                                datetime.now().isoformat(),
+                                datetime.now().isoformat(),
+                            ),
+                        )
                     result.inserted += 1
                     logger.info(f"카탈로그 생성: {catalog_id}")
 
                 # 다단계 서브카탈로그 동기화
                 for subcatalog_id, match in subcatalogs.items():
-                    dst_cursor.execute(
-                        "SELECT id FROM subcatalogs WHERE id = ?",
-                        (subcatalog_id,)
-                    )
+                    dst_cursor.execute("SELECT id FROM subcatalogs WHERE id = ?", (subcatalog_id,))
                     if not dst_cursor.fetchone():
                         # 상위 서브카탈로그 ID 결정
                         parent_id = self._get_parent_subcatalog_id(match)
@@ -398,31 +448,45 @@ class SyncService:
                         path = self._build_subcatalog_path(catalog_id, match)
 
                         if not dry_run:
-                            dst_cursor.execute("""
+                            dst_cursor.execute(
+                                """
                                 INSERT INTO subcatalogs (
                                     id, catalog_id, parent_id, name, depth, path,
                                     display_order, tournament_count, file_count,
                                     created_at, updated_at
                                 )
                                 VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?)
-                            """, (
-                                subcatalog_id,
-                                catalog_id,
-                                parent_id,
-                                self._format_subcatalog_name(subcatalog_id, match),
-                                match.depth,
-                                path,
-                                datetime.now().isoformat(),
-                                datetime.now().isoformat(),
-                            ))
+                            """,
+                                (
+                                    subcatalog_id,
+                                    catalog_id,
+                                    parent_id,
+                                    self._format_subcatalog_name(subcatalog_id, match),
+                                    match.depth,
+                                    path,
+                                    datetime.now().isoformat(),
+                                    datetime.now().isoformat(),
+                                ),
+                            )
                         result.inserted += 1
                         logger.info(
                             f"서브카탈로그 생성: {subcatalog_id} "
                             f"(depth={match.depth}, parent={parent_id})"
                         )
 
+            # 트랜잭션 커밋 (#33 - 롤백 로직 추가)
             if not dry_run:
                 dst_conn.commit()
+
+            logger.info(f"카탈로그 동기화 완료: {result.inserted}건 생성")
+
+        except Exception as e:
+            logger.exception(f"카탈로그 동기화 중 치명적 오류: {e}")
+            try:
+                dst_conn.rollback()
+            except Exception:
+                pass
+            raise
 
         finally:
             src_conn.close()
@@ -455,9 +519,7 @@ class SyncService:
 
         return None
 
-    def _build_subcatalog_path(
-        self, catalog_id: str, match: SubcatalogMatch
-    ) -> Optional[str]:
+    def _build_subcatalog_path(self, catalog_id: str, match: SubcatalogMatch) -> Optional[str]:
         """서브카탈로그 전체 경로 생성"""
         subcatalog_id = match.full_subcatalog_id
         if not subcatalog_id:
@@ -490,9 +552,7 @@ class SyncService:
 
         return f"{catalog_lower}/{subcatalog_id}"
 
-    def _format_subcatalog_name(
-        self, subcatalog_id: str, match: SubcatalogMatch
-    ) -> str:
+    def _format_subcatalog_name(self, subcatalog_id: str, match: SubcatalogMatch) -> str:
         """서브카탈로그 표시 이름 생성"""
         if match.year:
             # wsop-europe-2024 -> "2024 WSOP Europe"

@@ -9,27 +9,26 @@ Usage:
     python -m archive_analyzer.archive_hands_sync --daemon --interval 1800  # 30분 간격
 """
 
-import time
-from datetime import datetime
-
-import os
-import re
-import sqlite3
 import json
-from typing import Optional, List, Dict, Any, Tuple
+import os
+import sqlite3
+import time
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 import gspread
 from google.oauth2.service_account import Credentials
-
 
 # =============================================
 # Configuration
 # =============================================
 
+
 @dataclass
 class ArchiveSyncConfig:
     """아카이브 동기화 설정"""
+
     credentials_path: str = None
     archive_spreadsheet_id: str = "1_RN_W_ZQclSZA0Iez6XniCXVtjkkd5HNZwiT6l-z6d4"
     db_path: str = None
@@ -39,12 +38,11 @@ class ArchiveSyncConfig:
         if self.credentials_path is None:
             self.credentials_path = os.environ.get(
                 "CREDENTIALS_PATH",
-                "D:/AI/claude01/archive-analyzer/config/gcp-service-account.json"
+                "D:/AI/claude01/archive-analyzer/config/gcp-service-account.json",
             )
         if self.db_path is None:
             self.db_path = os.environ.get(
-                "DB_PATH",
-                "D:/AI/claude01/qwen_hand_analysis/data/pokervod.db"
+                "DB_PATH", "D:/AI/claude01/qwen_hand_analysis/data/pokervod.db"
             )
 
 
@@ -78,7 +76,6 @@ TAG_NORMALIZATION = {
     "set over set": "set_over_set",
     "kk vs qq": "premium_vs_premium",
     "aa vs kk": "premium_vs_premium",
-
     # Emotion tags
     "absurd": "absurd",
     "luckbox": "luckbox",
@@ -146,6 +143,7 @@ def normalize_nas_path(path: str) -> str:
 # Archive Hands Sync Service
 # =============================================
 
+
 class ArchiveHandsSync:
     """아카이브 팀 시트 ↔ hands 테이블 양방향 동기화"""
 
@@ -200,8 +198,7 @@ class ArchiveHandsSync:
         if filename:
             filename_normalized = filename.lower()
             cursor = self.conn.execute(
-                "SELECT id FROM files WHERE LOWER(filename) LIKE ?",
-                (f"%{filename_normalized}%",)
+                "SELECT id FROM files WHERE LOWER(filename) LIKE ?", (f"%{filename_normalized}%",)
             )
             row = cursor.fetchone()
             if row:
@@ -305,9 +302,11 @@ class ArchiveHandsSync:
                 continue
 
             if dry_run:
-                print(f"    [OK] file_id={record['file_id']}, hand={record['hand_number']}, "
-                      f"time={record['start_sec']}-{record['end_sec']}, "
-                      f"tags={record['tags']}")
+                print(
+                    f"    [OK] file_id={record['file_id']}, hand={record['hand_number']}, "
+                    f"time={record['start_sec']}-{record['end_sec']}, "
+                    f"tags={record['tags']}"
+                )
                 stats["inserted"] += 1
             else:
                 # DB에 upsert
@@ -324,14 +323,15 @@ class ArchiveHandsSync:
         # file_id + hand_number로 중복 체크
         cursor = self.conn.execute(
             "SELECT id FROM hands WHERE file_id = ? AND hand_number = ?",
-            (record["file_id"], record["hand_number"])
+            (record["file_id"], record["hand_number"]),
         )
         existing = cursor.fetchone()
 
         if existing:
             hand_id = existing["id"]
             # UPDATE hands (players, tags JSON 컬럼은 하위 호환성 유지)
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 UPDATE hands SET
                     start_sec = ?,
                     end_sec = ?,
@@ -341,34 +341,39 @@ class ArchiveHandsSync:
                     tags = ?,
                     title_source = ?
                 WHERE id = ?
-            """, (
-                record["start_sec"],
-                record["end_sec"],
-                record["highlight_score"],
-                record["cards_shown"],
-                record["players"],
-                record["tags"],
-                record["title_source"],
-                hand_id,
-            ))
+            """,
+                (
+                    record["start_sec"],
+                    record["end_sec"],
+                    record["highlight_score"],
+                    record["cards_shown"],
+                    record["players"],
+                    record["tags"],
+                    record["title_source"],
+                    hand_id,
+                ),
+            )
         else:
             # INSERT hands
-            cursor = self.conn.execute("""
+            cursor = self.conn.execute(
+                """
                 INSERT INTO hands (
                     file_id, hand_number, start_sec, end_sec,
                     highlight_score, cards_shown, players, tags, title_source
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                record["file_id"],
-                record["hand_number"],
-                record["start_sec"],
-                record["end_sec"],
-                record["highlight_score"],
-                record["cards_shown"],
-                record["players"],
-                record["tags"],
-                record["title_source"],
-            ))
+            """,
+                (
+                    record["file_id"],
+                    record["hand_number"],
+                    record["start_sec"],
+                    record["end_sec"],
+                    record["highlight_score"],
+                    record["cards_shown"],
+                    record["players"],
+                    record["tags"],
+                    record["title_source"],
+                ),
+            )
             hand_id = cursor.lastrowid
 
         # 정규화 테이블 업데이트 (hand_players, hand_tags)
@@ -382,16 +387,16 @@ class ArchiveHandsSync:
                 players = json.loads(record["players"])
                 if isinstance(players, list):
                     # 기존 레코드 삭제 후 재삽입
-                    self.conn.execute(
-                        "DELETE FROM hand_players WHERE hand_id = ?",
-                        (hand_id,)
-                    )
+                    self.conn.execute("DELETE FROM hand_players WHERE hand_id = ?", (hand_id,))
                     for position, player_name in enumerate(players, 1):
                         if player_name and isinstance(player_name, str):
-                            self.conn.execute("""
+                            self.conn.execute(
+                                """
                                 INSERT INTO hand_players (hand_id, player_name, position)
                                 VALUES (?, ?, ?)
-                            """, (hand_id, player_name.strip(), position))
+                            """,
+                                (hand_id, player_name.strip(), position),
+                            )
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -401,16 +406,16 @@ class ArchiveHandsSync:
                 tags = json.loads(record["tags"])
                 if isinstance(tags, list):
                     # 기존 레코드 삭제 후 재삽입
-                    self.conn.execute(
-                        "DELETE FROM hand_tags WHERE hand_id = ?",
-                        (hand_id,)
-                    )
+                    self.conn.execute("DELETE FROM hand_tags WHERE hand_id = ?", (hand_id,))
                     for tag in tags:
                         if tag and isinstance(tag, str):
-                            self.conn.execute("""
+                            self.conn.execute(
+                                """
                                 INSERT OR IGNORE INTO hand_tags (hand_id, tag)
                                 VALUES (?, ?)
-                            """, (hand_id, tag.strip()))
+                            """,
+                                (hand_id, tag.strip()),
+                            )
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -427,7 +432,7 @@ class ArchiveHandsSync:
                 total_stats[key] += stats.get(key, 0)
             print(f"    -> inserted: {stats['inserted']}, no_file: {stats['no_file']}")
 
-        print(f"\n=== Total ===")
+        print("\n=== Total ===")
         print(f"  Inserted: {total_stats['inserted']}")
         print(f"  No file match: {total_stats['no_file']}")
 
@@ -466,7 +471,9 @@ class ArchiveHandsSync:
 
     def _build_reverse_file_mapping(self) -> Dict[str, str]:
         """file_id → NAS 경로 역매핑"""
-        cursor = self.conn.execute("SELECT id, nas_path, filename FROM files WHERE nas_path IS NOT NULL")
+        cursor = self.conn.execute(
+            "SELECT id, nas_path, filename FROM files WHERE nas_path IS NOT NULL"
+        )
         mapping = {}
         for row in cursor:
             mapping[str(row["id"])] = {
@@ -477,7 +484,7 @@ class ArchiveHandsSync:
 
     def _denormalize_tag(self, tag: str) -> str:
         """정규화된 태그 → 원본 표시 형식"""
-        TAG_DISPLAY = {
+        tag_display = {
             "preflop_allin": "Preflop All-in",
             "multiway_allin": "Multiway All-in",
             "hero_fold": "Hero Fold",
@@ -501,7 +508,7 @@ class ArchiveHandsSync:
             "insane": "Insane",
             "brutal": "Brutal",
         }
-        return TAG_DISPLAY.get(tag, tag.replace("_", " ").title())
+        return tag_display.get(tag, tag.replace("_", " ").title())
 
     def _seconds_to_timecode(self, seconds: float) -> str:
         """초 → 타임코드 (H:MM:SS)"""
@@ -562,7 +569,7 @@ class ArchiveHandsSync:
         # 시트에서 파일 정보 추출
         file_info = self.get_worksheet_file_mapping(worksheet_name)
         if not file_info:
-            print(f"  No file info in worksheet")
+            print("  No file info in worksheet")
             return stats
 
         nas_path, filename = file_info
@@ -574,13 +581,16 @@ class ArchiveHandsSync:
             return stats
 
         # DB에서 해당 파일의 hands 조회
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT id, hand_number, start_sec, end_sec, highlight_score,
                    cards_shown, players, tags
             FROM hands
             WHERE file_id = ?
             ORDER BY hand_number
-        """, (file_id,))
+        """,
+            (file_id,),
+        )
 
         db_hands = {row["hand_number"]: dict(row) for row in cursor}
 
@@ -655,7 +665,7 @@ class ArchiveHandsSync:
             if player_indices and hand.get("players"):
                 try:
                     players = json.loads(hand["players"])
-                    for i, player in enumerate(players[:len(player_indices)]):
+                    for i, player in enumerate(players[: len(player_indices)]):
                         col_idx = player_indices[i]
                         if len(row) > col_idx and row[col_idx] != player:
                             updates.append((row_idx, col_idx + 1, player))
@@ -670,22 +680,22 @@ class ArchiveHandsSync:
                     # 태그 분류
                     poker_tags = []
                     emotion_tags = []
-                    EMOTION_TAGS = {"absurd", "luckbox", "insane", "brutal"}
+                    emotion_tag_set = {"absurd", "luckbox", "insane", "brutal"}
 
                     for tag in tags:
-                        if tag in EMOTION_TAGS:
+                        if tag in emotion_tag_set:
                             emotion_tags.append(self._denormalize_tag(tag))
                         else:
                             poker_tags.append(self._denormalize_tag(tag))
 
                     # Poker Play 태그
-                    for i, tag in enumerate(poker_tags[:len(poker_indices)]):
+                    for i, tag in enumerate(poker_tags[: len(poker_indices)]):
                         col_idx = poker_indices[i]
                         if len(row) > col_idx and row[col_idx] != tag:
                             updates.append((row_idx, col_idx + 1, tag))
 
                     # Emotion 태그
-                    for i, tag in enumerate(emotion_tags[:len(emotion_indices)]):
+                    for i, tag in enumerate(emotion_tags[: len(emotion_indices)]):
                         col_idx = emotion_indices[i]
                         if len(row) > col_idx and row[col_idx] != tag:
                             updates.append((row_idx, col_idx + 1, tag))
@@ -719,7 +729,7 @@ class ArchiveHandsSync:
                 total_stats[key] += stats.get(key, 0)
             print(f"    -> synced: {stats['synced']}, cells updated: {stats['added']}")
 
-        print(f"\n=== Total ===")
+        print("\n=== Total ===")
         print(f"  Hands synced: {total_stats['synced']}")
         print(f"  Cells updated: {total_stats['added']}")
         print(f"  No file match: {total_stats['no_match']}")
@@ -731,16 +741,21 @@ class ArchiveHandsSync:
 # CLI
 # =============================================
 
+
 def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Archive Team Hands Sync")
     parser.add_argument("--sync", action="store_true", help="Sync archive sheets to DB (forward)")
-    parser.add_argument("--reverse", action="store_true", help="Sync DB to archive sheets (reverse)")
+    parser.add_argument(
+        "--reverse", action="store_true", help="Sync DB to archive sheets (reverse)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing")
     parser.add_argument("--sheet", type=str, help="Sync specific worksheet only")
     parser.add_argument("--daemon", action="store_true", help="Run as background daemon")
-    parser.add_argument("--interval", type=int, default=3600, help="Sync interval in seconds (default: 3600 = 1hr)")
+    parser.add_argument(
+        "--interval", type=int, default=3600, help="Sync interval in seconds (default: 3600 = 1hr)"
+    )
 
     args = parser.parse_args()
 

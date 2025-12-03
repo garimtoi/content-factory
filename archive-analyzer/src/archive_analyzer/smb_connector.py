@@ -7,25 +7,24 @@ Issue #2: SMB 네트워크 연결 모듈 구현
 - 연결 상태 모니터링
 """
 
+import logging
 import os
 import time
-import logging
-from typing import Optional, List, Iterator, Any
-from dataclasses import dataclass
 from contextlib import contextmanager
-from pathlib import PurePosixPath
+from dataclasses import dataclass
+from typing import Any, Iterator, List, Optional
 
 from smbclient import (
-    register_session,
     delete_session,
     listdir,
-    stat,
     open_file,
+    register_session,
     scandir,
+    stat,
 )
-from smbclient.path import isdir, isfile, exists
+from smbclient.path import exists, isdir
 
-from .config import SMBConfig, AnalyzerConfig
+from .config import AnalyzerConfig, SMBConfig
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +32,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FileInfo:
     """파일 정보 데이터 클래스"""
+
     path: str
     name: str
     size: int
@@ -58,6 +58,7 @@ class FileInfo:
 
 class SMBConnectionError(Exception):
     """SMB 연결 오류"""
+
     pass
 
 
@@ -173,7 +174,7 @@ class SMBConnector:
         try:
             items = listdir(full_path)
             # 숨김 파일 제외
-            return [item for item in items if not item.startswith('.')]
+            return [item for item in items if not item.startswith(".")]
         except Exception as e:
             logger.error(f"Failed to list directory {full_path}: {e}")
             raise
@@ -213,16 +214,12 @@ class SMBConnector:
 
         try:
             for entry in scandir(full_path):
-                if entry.name.startswith('.'):
+                if entry.name.startswith("."):
                     continue
 
                 try:
                     stat_result = entry.stat()
-                    file_info = FileInfo.from_stat(
-                        entry.path,
-                        entry.name,
-                        stat_result
-                    )
+                    file_info = FileInfo.from_stat(entry.path, entry.name, stat_result)
                     yield file_info
 
                     # 재귀 스캔
@@ -345,13 +342,7 @@ def create_connector(config: Optional[AnalyzerConfig] = None) -> SMBConnector:
     return SMBConnector(config.smb)
 
 
-def quick_connect(
-    server: str,
-    share: str,
-    username: str,
-    password: str,
-    **kwargs
-) -> SMBConnector:
+def quick_connect(server: str, share: str, username: str, password: str, **kwargs) -> SMBConnector:
     """빠른 연결을 위한 헬퍼 함수
 
     Args:
@@ -364,13 +355,7 @@ def quick_connect(
     Returns:
         연결된 SMBConnector
     """
-    config = SMBConfig(
-        server=server,
-        share=share,
-        username=username,
-        password=password,
-        **kwargs
-    )
+    config = SMBConfig(server=server, share=share, username=username, password=password, **kwargs)
     connector = SMBConnector(config)
     connector.connect()
     return connector

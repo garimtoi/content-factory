@@ -16,13 +16,14 @@ Usage:
 """
 
 import re
-from typing import Optional, Dict, Any
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 
 @dataclass
 class GeneratedTitle:
     """생성된 제목 결과"""
+
     title: str
     subtitle: Optional[str] = None
     source: str = "rule_based"  # 'rule_based', 'ai_generated', 'manual'
@@ -45,7 +46,6 @@ class TitleGenerator:
         "NLH": "No-Limit Hold'em",
         "6M": "6-Max",
         "6MAX": "6-Max",
-
         # Day/Session
         "D1": "Day 1",
         "D1A": "Day 1A",
@@ -57,7 +57,6 @@ class TitleGenerator:
         "D5": "Day 5",
         "D6": "Day 6",
         "D7": "Day 7",
-
         # 기타
         "EP": "Episode",
         "P1": "Part 1",
@@ -125,9 +124,6 @@ class TitleGenerator:
             if sub and re.match(r"^\d{4}$", sub.strip()):
                 year = sub.strip()
                 break
-
-        # 시리즈 이름
-        series = self.SERIES_NAMES.get(catalog_id.upper(), catalog_id)
 
         # 지역/이벤트 이름 (sub1, sub2에서)
         location = None
@@ -200,7 +196,8 @@ class TitleGenerator:
                 r"([A-Za-z\s]+)?\s*"
                 r"(Main Event|High Roller|Super High Roller|Side Event)?\s*"
                 r"[-–]?\s*(Day\s*\d+[A-C]?|Final\s*(?:Table|Day))?",
-                name, re.IGNORECASE
+                name,
+                re.IGNORECASE,
             )
             if wsop_match and (wsop_match.group(1) or wsop_match.group(3) or wsop_match.group(4)):
                 parts = ["WSOP"]
@@ -221,8 +218,7 @@ class TitleGenerator:
         # HCL 패턴 "20250611 - Nik Airball, Sashimi..."
         if not title:
             hcl_match = re.search(
-                r"(\d{8})\s*[-–]?\s*(.+?)(?:\s+Commentary.*)?$",
-                name, re.IGNORECASE
+                r"(\d{8})\s*[-–]?\s*(.+?)(?:\s+Commentary.*)?$", name, re.IGNORECASE
             )
             if hcl_match and nas_path and "HCL" in nas_path.upper():
                 date_str = hcl_match.group(1)
@@ -238,8 +234,7 @@ class TitleGenerator:
         # PAD 패턴 "PAD Season 12 Episode 5"
         if not title:
             pad_match = re.search(
-                r"PAD\s*(?:Season\s*)?(\d+)\s*(?:EP|Episode)?\s*(\d+)?",
-                name, re.IGNORECASE
+                r"PAD\s*(?:Season\s*)?(\d+)\s*(?:EP|Episode)?\s*(\d+)?", name, re.IGNORECASE
             )
             if pad_match:
                 season = pad_match.group(1)
@@ -251,8 +246,7 @@ class TitleGenerator:
         # MPP 패턴 "$1M GTD $1K PokerOK..."
         if not title:
             mpp_match = re.search(
-                r"\$(\d+[KMB])\s*GTD\s*\$?(\d+[KMB]?)\s*(.+)",
-                name, re.IGNORECASE
+                r"\$(\d+[KMB])\s*GTD\s*\$?(\d+[KMB]?)\s*(.+)", name, re.IGNORECASE
             )
             if mpp_match:
                 guarantee = mpp_match.group(1)
@@ -361,10 +355,17 @@ class TitleGenerator:
     def _get_famous_players(self, players: list) -> list:
         """유명 플레이어 필터링"""
         famous = [
-            "Phil Ivey", "Daniel Negreanu", "Phil Hellmuth",
-            "Doyle Brunson", "Tom Dwan", "Doug Polk",
-            "Garrett Adelstein", "Eric Persson", "Rampage",
-            "Antonio Esfandiari", "Patrik Antonius",
+            "Phil Ivey",
+            "Daniel Negreanu",
+            "Phil Hellmuth",
+            "Doyle Brunson",
+            "Tom Dwan",
+            "Doug Polk",
+            "Garrett Adelstein",
+            "Eric Persson",
+            "Rampage",
+            "Antonio Esfandiari",
+            "Patrik Antonius",
         ]
         return [p for p in players if any(f.lower() in p.lower() for f in famous)]
 

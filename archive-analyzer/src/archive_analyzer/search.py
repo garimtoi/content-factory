@@ -4,12 +4,14 @@ archive.db 데이터를 MeiliSearch로 인덱싱하고 검색 기능을 제공�
 """
 
 import logging
-from typing import Optional, List, Dict, Any
-from dataclasses import dataclass, asdict
+import os
 import sqlite3
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 try:
     import meilisearch
+
     MEILISEARCH_AVAILABLE = True
 except ImportError:
     MEILISEARCH_AVAILABLE = False
@@ -19,9 +21,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SearchConfig:
-    """MeiliSearch 설정"""
-    host: str = "http://localhost:7700"
-    api_key: str = "archive-analyzer-dev-key"
+    """MeiliSearch 설정 (#28 - 환경변수 기반)"""
+
+    host: str = field(default_factory=lambda: os.getenv("MEILISEARCH_URL", "http://localhost:7700"))
+    api_key: str = field(default_factory=lambda: os.getenv("MEILISEARCH_API_KEY", ""))
 
     # 인덱스 이름
     files_index: str = "files"
@@ -32,6 +35,7 @@ class SearchConfig:
 @dataclass
 class SearchResult:
     """검색 결과"""
+
     hits: List[Dict[str, Any]]
     total_hits: int
     processing_time_ms: int
@@ -57,99 +61,108 @@ class SearchService:
         """인덱스 초기 설정"""
         # files 인덱스
         files_index = self.client.index(self.config.files_index)
-        files_index.update_settings({
-            "searchableAttributes": [
-                "filename",
-                "path",
-                "parent_folder",
-                "file_type",
-                "extension",
-            ],
-            "filterableAttributes": [
-                "file_type",
-                "extension",
-                "parent_folder",
-                "scan_status",
-            ],
-            "sortableAttributes": [
-                "size_bytes",
-                "modified_at",
-                "created_at",
-            ],
-            "displayedAttributes": [
-                "id",
-                "path",
-                "filename",
-                "extension",
-                "size_bytes",
-                "modified_at",
-                "file_type",
-                "parent_folder",
-                "scan_status",
-            ],
-        })
+        files_index.update_settings(
+            {
+                "searchableAttributes": [
+                    "filename",
+                    "path",
+                    "parent_folder",
+                    "file_type",
+                    "extension",
+                ],
+                "filterableAttributes": [
+                    "file_type",
+                    "extension",
+                    "parent_folder",
+                    "scan_status",
+                ],
+                "sortableAttributes": [
+                    "size_bytes",
+                    "modified_at",
+                    "created_at",
+                ],
+                "displayedAttributes": [
+                    "id",
+                    "path",
+                    "filename",
+                    "extension",
+                    "size_bytes",
+                    "modified_at",
+                    "file_type",
+                    "parent_folder",
+                    "scan_status",
+                ],
+            }
+        )
 
         # media_info 인덱스
         media_index = self.client.index(self.config.media_index)
-        media_index.update_settings({
-            "searchableAttributes": [
-                "file_path",
-                "video_codec",
-                "audio_codec",
-                "container_format",
-                "title",
-            ],
-            "filterableAttributes": [
-                "video_codec",
-                "audio_codec",
-                "has_video",
-                "has_audio",
-                "extraction_status",
-                "resolution_label",
-            ],
-            "sortableAttributes": [
-                "duration_seconds",
-                "width",
-                "height",
-                "bitrate",
-                "file_size",
-            ],
-        })
+        media_index.update_settings(
+            {
+                "searchableAttributes": [
+                    "file_path",
+                    "video_codec",
+                    "audio_codec",
+                    "container_format",
+                    "title",
+                ],
+                "filterableAttributes": [
+                    "video_codec",
+                    "audio_codec",
+                    "has_video",
+                    "has_audio",
+                    "extraction_status",
+                    "resolution_label",
+                ],
+                "sortableAttributes": [
+                    "duration_seconds",
+                    "width",
+                    "height",
+                    "bitrate",
+                    "file_size",
+                ],
+            }
+        )
 
         # clip_metadata 인덱스
         clips_index = self.client.index(self.config.clips_index)
-        clips_index.update_settings({
-            "searchableAttributes": [
-                "title",
-                "description",
-                "players_tags",
-                "project_name",
-                "episode_event",
-                "tournament",
-                "hand_tag",
-            ],
-            "filterableAttributes": [
-                "project_name",
-                "year",
-                "location",
-                "hand_grade",
-                "is_badbeat",
-                "is_bluff",
-                "is_suckout",
-                "is_cooler",
-                "game_type",
-            ],
-            "sortableAttributes": [
-                "year",
-                "time_start_ms",
-                "match_confidence",
-            ],
-        })
+        clips_index.update_settings(
+            {
+                "searchableAttributes": [
+                    "title",
+                    "description",
+                    "players_tags",
+                    "project_name",
+                    "episode_event",
+                    "tournament",
+                    "hand_tag",
+                ],
+                "filterableAttributes": [
+                    "project_name",
+                    "year",
+                    "location",
+                    "hand_grade",
+                    "is_badbeat",
+                    "is_bluff",
+                    "is_suckout",
+                    "is_cooler",
+                    "game_type",
+                ],
+                "sortableAttributes": [
+                    "year",
+                    "time_start_ms",
+                    "match_confidence",
+                ],
+            }
+        )
 
         logger.info("MeiliSearch 인덱스 설정 완료")
 
+    # #41 - 청크 처리를 위한 배치 크기
+    BATCH_SIZE = 1000
+
     def index_from_db(self, db_path: str) -> Dict[str, int]:
-        """SQLite DB에서 데이터를 읽어 인덱싱
+        """SQLite DB에서 데이터를 읽어 인덱싱 (#41 - 청크 처리로 OOM 방지)
 
         Args:
             db_path: archive.db 경로
@@ -163,16 +176,23 @@ class SearchService:
 
         results = {}
 
-        # files 테이블 인덱싱
+        # files 테이블 인덱싱 (청크 처리)
         cursor.execute("SELECT * FROM files")
-        files = [dict(row) for row in cursor.fetchall()]
-        if files:
-            self.client.index(self.config.files_index).add_documents(files, primary_key="id")
-            results["files"] = len(files)
-            logger.info(f"files 인덱싱 완료: {len(files)}건")
+        files_count = 0
+        while True:
+            batch = cursor.fetchmany(self.BATCH_SIZE)
+            if not batch:
+                break
+            docs = [dict(row) for row in batch]
+            self.client.index(self.config.files_index).add_documents(docs, primary_key="id")
+            files_count += len(docs)
+        if files_count:
+            results["files"] = files_count
+            logger.info(f"files 인덱싱 완료: {files_count}건")
 
-        # media_info 테이블 인덱싱
-        cursor.execute("""
+        # media_info 테이블 인덱싱 (청크 처리)
+        cursor.execute(
+            """
             SELECT
                 m.*,
                 CASE
@@ -184,20 +204,33 @@ class SearchService:
                     ELSE 'Other'
                 END as resolution_label
             FROM media_info m
-        """)
-        media = [dict(row) for row in cursor.fetchall()]
-        if media:
-            self.client.index(self.config.media_index).add_documents(media, primary_key="id")
-            results["media_info"] = len(media)
-            logger.info(f"media_info 인덱싱 완료: {len(media)}건")
+        """
+        )
+        media_count = 0
+        while True:
+            batch = cursor.fetchmany(self.BATCH_SIZE)
+            if not batch:
+                break
+            docs = [dict(row) for row in batch]
+            self.client.index(self.config.media_index).add_documents(docs, primary_key="id")
+            media_count += len(docs)
+        if media_count:
+            results["media_info"] = media_count
+            logger.info(f"media_info 인덱싱 완료: {media_count}건")
 
-        # clip_metadata 테이블 인덱싱
+        # clip_metadata 테이블 인덱싱 (청크 처리)
         cursor.execute("SELECT * FROM clip_metadata")
-        clips = [dict(row) for row in cursor.fetchall()]
-        if clips:
-            self.client.index(self.config.clips_index).add_documents(clips, primary_key="id")
-            results["clip_metadata"] = len(clips)
-            logger.info(f"clip_metadata 인덱싱 완료: {len(clips)}건")
+        clips_count = 0
+        while True:
+            batch = cursor.fetchmany(self.BATCH_SIZE)
+            if not batch:
+                break
+            docs = [dict(row) for row in batch]
+            self.client.index(self.config.clips_index).add_documents(docs, primary_key="id")
+            clips_count += len(docs)
+        if clips_count:
+            results["clip_metadata"] = clips_count
+            logger.info(f"clip_metadata 인덱싱 완료: {clips_count}건")
 
         conn.close()
         return results
@@ -234,7 +267,7 @@ class SearchService:
                 "limit": limit,
                 "offset": offset,
                 "filter": " AND ".join(filters) if filters else None,
-            }
+            },
         )
 
         return SearchResult(
@@ -276,7 +309,7 @@ class SearchService:
                 "limit": limit,
                 "offset": offset,
                 "filter": " AND ".join(filters) if filters else None,
-            }
+            },
         )
 
         return SearchResult(
@@ -316,9 +349,9 @@ class SearchService:
         if hand_grade:
             filters.append(f'hand_grade = "{hand_grade}"')
         if year:
-            filters.append(f'year = {year}')
+            filters.append(f"year = {year}")
         if is_bluff is not None:
-            filters.append(f'is_bluff = {1 if is_bluff else 0}')
+            filters.append(f"is_bluff = {1 if is_bluff else 0}")
 
         result = self.client.index(self.config.clips_index).search(
             query,
@@ -326,7 +359,7 @@ class SearchService:
                 "limit": limit,
                 "offset": offset,
                 "filter": " AND ".join(filters) if filters else None,
-            }
+            },
         )
 
         return SearchResult(
@@ -340,7 +373,11 @@ class SearchService:
         """인덱스 통계 조회"""
         stats = {}
 
-        for index_name in [self.config.files_index, self.config.media_index, self.config.clips_index]:
+        for index_name in [
+            self.config.files_index,
+            self.config.media_index,
+            self.config.clips_index,
+        ]:
             try:
                 index = self.client.index(index_name)
                 index_stats = index.get_stats()
@@ -355,7 +392,11 @@ class SearchService:
 
     def clear_all(self) -> None:
         """모든 인덱스 삭제 (테스트용)"""
-        for index_name in [self.config.files_index, self.config.media_index, self.config.clips_index]:
+        for index_name in [
+            self.config.files_index,
+            self.config.media_index,
+            self.config.clips_index,
+        ]:
             try:
                 self.client.index(index_name).delete_all_documents()
                 logger.warning(f"인덱스 {index_name} 초기화됨")

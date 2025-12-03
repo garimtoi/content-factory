@@ -22,12 +22,13 @@ class TestSearchConfig:
     """SearchConfig 테스트"""
 
     def test_default_values(self):
-        """기본값 확인"""
+        """기본값 확인 (#28 - 환경변수 기반)"""
         from archive_analyzer.search import SearchConfig
+        import os
 
         config = SearchConfig()
-        assert config.host == "http://localhost:7700"
-        assert config.api_key == "archive-analyzer-dev-key"
+        assert config.host == os.getenv("MEILISEARCH_URL", "http://localhost:7700")
+        assert config.api_key == os.getenv("MEILISEARCH_API_KEY", "")
         assert config.files_index == "files"
         assert config.media_index == "media_info"
         assert config.clips_index == "clip_metadata"
