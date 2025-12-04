@@ -304,12 +304,12 @@ class FirestoreMigrator:
         rows = cursor.fetchall()
         stats.total = len(rows)
 
-        # content_players 조회
+        # content_players 조회 (player_id는 players.rowid 참조)
         player_map = {}
         for row in self.conn.execute("""
             SELECT cp.content_id, p.name, p.display_name, cp.role
             FROM content_players cp
-            JOIN players p ON cp.player_id = p.name OR cp.player_id = p.rowid
+            JOIN players p ON cp.player_id = p.rowid
         """):
             content_id = row[0]
             if content_id not in player_map:
@@ -355,16 +355,17 @@ class FirestoreMigrator:
                     "subline": row["subline"],
                     "thumbnailUrl": row["thumbnail_url"],
                     "thumbnailText": row["thumbnail_text"],
-                    "fileId": row["file_id"],
+                    "nasPath": row["nas_path"],
+                    "fileSizeBytes": row["file_size_bytes"],
                     "durationSec": row["duration_sec"] or 0,
                     "resolution": row["resolution"],
                     "codec": row["codec"],
                     "players": player_map.get(row["id"], []),
                     "tags": tag_map.get(row["id"], []),
                     "viewCount": row["view_count"] or 0,
-                    "lastViewedAt": self._timestamp_to_iso(row["last_viewed_at"]),
-                    "episodeNum": row["episode_num"],
-                    "airDate": self._timestamp_to_iso(row["air_date"]),
+                    "likeCount": row["like_count"] or 0,
+                    "episodeNum": row["episode_number"],
+                    "handCount": row["hand_count"],
                     "createdAt": self._timestamp_to_iso(row["created_at"]),
                     "updatedAt": self._timestamp_to_iso(row["updated_at"]),
                 }
@@ -414,15 +415,15 @@ class FirestoreMigrator:
         rows = cursor.fetchall()
         stats.total = len(rows)
 
-        # 연결된 콘텐츠 조회
+        # 연결된 콘텐츠 조회 (nas_path 기반)
         content_map = {}
         for row in self.conn.execute("""
-            SELECT file_id, id FROM contents WHERE file_id IS NOT NULL
+            SELECT nas_path, id FROM contents WHERE nas_path IS NOT NULL
         """):
-            file_id = row[0]
-            if file_id not in content_map:
-                content_map[file_id] = []
-            content_map[file_id].append(str(row[1]))
+            nas_path = row[0]
+            if nas_path not in content_map:
+                content_map[nas_path] = []
+            content_map[nas_path].append(str(row[1]))
 
         batch_count = 0
         batch = self.db.batch() if self.db else None
@@ -430,13 +431,13 @@ class FirestoreMigrator:
         for row in rows:
             try:
                 file_id = row["id"]
-                # NAS 경로로 ID 생성
                 nas_path = row["nas_path"] or ""
-                doc_id = hashlib.md5(nas_path.lower().encode()).hexdigest()[:16] if nas_path else file_id
+                # 기존 ID 그대로 사용 (이미 해시)
+                doc_id = file_id
 
                 doc_data = {
                     "id": doc_id,
-                    "originalId": file_id,
+                    "eventId": row["event_id"],
                     "nasPath": nas_path,
                     "filename": row["filename"],
                     "sizeBytes": row["size_bytes"] or 0,
@@ -448,7 +449,13 @@ class FirestoreMigrator:
                     "analysisStatus": row["analysis_status"] or "pending",
                     "analysisError": row["analysis_error"],
                     "analyzedAt": self._timestamp_to_iso(row["analyzed_at"]),
-                    "contentIds": content_map.get(file_id, []),
+                    "handsCount": row["hands_count"],
+                    "viewCount": row["view_count"] or 0,
+                    "displayTitle": row["display_title"],
+                    "displaySubtitle": row["display_subtitle"],
+                    "titleSource": row["title_source"],
+                    "titleVerified": bool(row["title_verified"]),
+                    "contentIds": content_map.get(nas_path, []),
                     "createdAt": self._timestamp_to_iso(row["created_at"]),
                     "updatedAt": self._timestamp_to_iso(row["updated_at"]),
                 }
@@ -507,6 +514,8 @@ class FirestoreMigrator:
                     "totalContents": content_counts.get(row["name"], 0),
                     "totalHands": row["total_hands"],
                     "totalWins": row["total_wins"],
+                    "totalAllIns": row["total_all_ins"],
+                    "avgPotBb": row["avg_pot_bb"],
                     "searchVector": row["search_vector"],
                     "aliases": [],
                     "firstSeenAt": self._timestamp_to_iso(row["first_seen_at"]),
@@ -602,12 +611,16 @@ class FirestoreMigrator:
                     "autoplayEnabled": bool(row["autoplay_enabled"]),
                     "isActive": bool(row["is_active"]),
                     "isAdmin": bool(row["is_admin"]),
+                    "isApproved": bool(row["is_approved"]),
+                    "approvedBy": row["approved_by"],
+                    "approvedAt": self._timestamp_to_iso(row["approved_at"]),
                     "role": row["role"] or "viewer",
                     "authProvider": row["auth_provider"] or "email",
                     "googleId": row["google_id"],
+                    "googleEmail": row["google_email"],
+                    "googlePicture": row["google_picture"],
                     "createdAt": self._timestamp_to_iso(row["created_at"]),
                     "lastLoginAt": self._timestamp_to_iso(row["last_login_at"]),
-                    "loginCount": row["login_count"] or 0,
                 }
 
                 if self.dry_run:

@@ -1,7 +1,6 @@
 {
   "indexes": [
     {
-      "__comment": "카탈로그별 시리즈 - 최신순",
       "collectionGroup": "series",
       "queryScope": "COLLECTION",
       "fields": [
@@ -10,7 +9,6 @@
       ]
     },
     {
-      "__comment": "카탈로그별 시리즈 - 연도순",
       "collectionGroup": "series",
       "queryScope": "COLLECTION",
       "fields": [
@@ -19,7 +17,6 @@
       ]
     },
     {
-      "__comment": "콘텐츠 - 에피소드 번호순",
       "collectionGroup": "contents",
       "queryScope": "COLLECTION",
       "fields": [
@@ -28,7 +25,6 @@
       ]
     },
     {
-      "__comment": "콘텐츠 - 최신순",
       "collectionGroup": "contents",
       "queryScope": "COLLECTION",
       "fields": [
@@ -37,7 +33,6 @@
       ]
     },
     {
-      "__comment": "콘텐츠 - 인기순 (조회수)",
       "collectionGroup": "contents",
       "queryScope": "COLLECTION",
       "fields": [
@@ -46,7 +41,6 @@
       ]
     },
     {
-      "__comment": "Collection Group: 카탈로그별 전체 콘텐츠 - 최신순",
       "collectionGroup": "contents",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -55,7 +49,6 @@
       ]
     },
     {
-      "__comment": "Collection Group: 카탈로그별 전체 콘텐츠 - 인기순",
       "collectionGroup": "contents",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -64,7 +57,6 @@
       ]
     },
     {
-      "__comment": "Collection Group: 콘텐츠 유형별 필터 + 최신순",
       "collectionGroup": "contents",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -73,7 +65,6 @@
       ]
     },
     {
-      "__comment": "마이그레이션 작업 - 상태별 최신순",
       "collectionGroup": "migrationJobs",
       "queryScope": "COLLECTION",
       "fields": [
@@ -82,7 +73,6 @@
       ]
     },
     {
-      "__comment": "마이그레이션 작업 - 유형별 최신순",
       "collectionGroup": "migrationJobs",
       "queryScope": "COLLECTION",
       "fields": [
@@ -91,7 +81,6 @@
       ]
     },
     {
-      "__comment": "파일 - 분석 상태별",
       "collectionGroup": "files",
       "queryScope": "COLLECTION",
       "fields": [
@@ -100,15 +89,6 @@
       ]
     },
     {
-      "__comment": "플레이어 - 출연 콘텐츠 수 순",
-      "collectionGroup": "players",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "totalContents", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "__comment": "태그 - 사용 횟수 순",
       "collectionGroup": "tags",
       "queryScope": "COLLECTION",
       "fields": [
@@ -117,7 +97,6 @@
       ]
     },
     {
-      "__comment": "사용자 - 마지막 로그인순",
       "collectionGroup": "users",
       "queryScope": "COLLECTION",
       "fields": [
@@ -126,7 +105,6 @@
       ]
     },
     {
-      "__comment": "시청 진행률 - 사용자별 최근순",
       "collectionGroup": "watchProgress",
       "queryScope": "COLLECTION",
       "fields": [
@@ -135,7 +113,6 @@
       ]
     },
     {
-      "__comment": "검색 기록 - 사용자별 최근순",
       "collectionGroup": "searchHistory",
       "queryScope": "COLLECTION",
       "fields": [
@@ -144,23 +121,6 @@
       ]
     },
     {
-      "__comment": "인기 검색어 - 검색 횟수순",
-      "collectionGroup": "popularSearches",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "searchCount", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "__comment": "추천 캐시 - 만료 시간순",
-      "collectionGroup": "recommendationCache",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "expiresAt", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "__comment": "트렌딩 점수 - 점수순",
       "collectionGroup": "trendingScores",
       "queryScope": "COLLECTION",
       "fields": [
@@ -171,41 +131,6 @@
   ],
   "fieldOverrides": [
     {
-      "__comment": "files.nasPath - 유니크 인덱스",
-      "collectionGroup": "files",
-      "fieldPath": "nasPath",
-      "indexes": [
-        { "order": "ASCENDING", "queryScope": "COLLECTION" },
-        { "order": "DESCENDING", "queryScope": "COLLECTION" }
-      ]
-    },
-    {
-      "__comment": "players.name - 유니크 인덱스 및 검색",
-      "collectionGroup": "players",
-      "fieldPath": "name",
-      "indexes": [
-        { "order": "ASCENDING", "queryScope": "COLLECTION" },
-        { "order": "DESCENDING", "queryScope": "COLLECTION" }
-      ]
-    },
-    {
-      "__comment": "tags.name - 유니크 인덱스",
-      "collectionGroup": "tags",
-      "fieldPath": "name",
-      "indexes": [
-        { "order": "ASCENDING", "queryScope": "COLLECTION" }
-      ]
-    },
-    {
-      "__comment": "users.email - 유니크 인덱스",
-      "collectionGroup": "users",
-      "fieldPath": "email",
-      "indexes": [
-        { "order": "ASCENDING", "queryScope": "COLLECTION" }
-      ]
-    },
-    {
-      "__comment": "contents.players - 배열 검색용",
       "collectionGroup": "contents",
       "fieldPath": "players",
       "indexes": [
@@ -214,7 +139,6 @@
       ]
     },
     {
-      "__comment": "contents.tags - 배열 검색용",
       "collectionGroup": "contents",
       "fieldPath": "tags",
       "indexes": [

@@ -425,7 +425,7 @@ class TestIndexesValidation:
         data = json.loads(indexes_path.read_text(encoding="utf-8"))
 
         array_overrides = [
-            fo for fo in data["fieldOverrides"]
+            fo for fo in data.get("fieldOverrides", [])
             if any(idx.get("arrayConfig") == "CONTAINS" for idx in fo.get("indexes", []))
         ]
         assert len(array_overrides) >= 2, "Array Contains 인덱스가 부족합니다 (players, tags)"
