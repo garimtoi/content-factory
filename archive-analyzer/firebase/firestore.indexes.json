@@ -1,0 +1,226 @@
+{
+  "indexes": [
+    {
+      "__comment": "카탈로그별 시리즈 - 최신순",
+      "collectionGroup": "series",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "catalogId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "카탈로그별 시리즈 - 연도순",
+      "collectionGroup": "series",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "catalogId", "order": "ASCENDING" },
+        { "fieldPath": "year", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "콘텐츠 - 에피소드 번호순",
+      "collectionGroup": "contents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "seriesId", "order": "ASCENDING" },
+        { "fieldPath": "episodeNum", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "__comment": "콘텐츠 - 최신순",
+      "collectionGroup": "contents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "seriesId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "콘텐츠 - 인기순 (조회수)",
+      "collectionGroup": "contents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "seriesId", "order": "ASCENDING" },
+        { "fieldPath": "viewCount", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "Collection Group: 카탈로그별 전체 콘텐츠 - 최신순",
+      "collectionGroup": "contents",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "catalogId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "Collection Group: 카탈로그별 전체 콘텐츠 - 인기순",
+      "collectionGroup": "contents",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "catalogId", "order": "ASCENDING" },
+        { "fieldPath": "viewCount", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "Collection Group: 콘텐츠 유형별 필터 + 최신순",
+      "collectionGroup": "contents",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "contentType", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "마이그레이션 작업 - 상태별 최신순",
+      "collectionGroup": "migrationJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "startedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "마이그레이션 작업 - 유형별 최신순",
+      "collectionGroup": "migrationJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "jobType", "order": "ASCENDING" },
+        { "fieldPath": "startedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "파일 - 분석 상태별",
+      "collectionGroup": "files",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "analysisStatus", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "플레이어 - 출연 콘텐츠 수 순",
+      "collectionGroup": "players",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "totalContents", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "태그 - 사용 횟수 순",
+      "collectionGroup": "tags",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "category", "order": "ASCENDING" },
+        { "fieldPath": "usageCount", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "사용자 - 마지막 로그인순",
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isActive", "order": "ASCENDING" },
+        { "fieldPath": "lastLoginAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "시청 진행률 - 사용자별 최근순",
+      "collectionGroup": "watchProgress",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "검색 기록 - 사용자별 최근순",
+      "collectionGroup": "searchHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "searchedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "인기 검색어 - 검색 횟수순",
+      "collectionGroup": "popularSearches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "searchCount", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "__comment": "추천 캐시 - 만료 시간순",
+      "collectionGroup": "recommendationCache",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "expiresAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "__comment": "트렌딩 점수 - 점수순",
+      "collectionGroup": "trendingScores",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "catalogId", "order": "ASCENDING" },
+        { "fieldPath": "score", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "__comment": "files.nasPath - 유니크 인덱스",
+      "collectionGroup": "files",
+      "fieldPath": "nasPath",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" }
+      ]
+    },
+    {
+      "__comment": "players.name - 유니크 인덱스 및 검색",
+      "collectionGroup": "players",
+      "fieldPath": "name",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" }
+      ]
+    },
+    {
+      "__comment": "tags.name - 유니크 인덱스",
+      "collectionGroup": "tags",
+      "fieldPath": "name",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" }
+      ]
+    },
+    {
+      "__comment": "users.email - 유니크 인덱스",
+      "collectionGroup": "users",
+      "fieldPath": "email",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" }
+      ]
+    },
+    {
+      "__comment": "contents.players - 배열 검색용",
+      "collectionGroup": "contents",
+      "fieldPath": "players",
+      "indexes": [
+        { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION" },
+        { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION_GROUP" }
+      ]
+    },
+    {
+      "__comment": "contents.tags - 배열 검색용",
+      "collectionGroup": "contents",
+      "fieldPath": "tags",
+      "indexes": [
+        { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION" },
+        { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION_GROUP" }
+      ]
+    }
+  ]
+}
