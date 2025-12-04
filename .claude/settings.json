@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": ["*"],
+    "defaultMode": "bypassPermissions"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "python D:\\AI\\claude01\\.claude\\statusline.py"
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python D:\\AI\\claude01\\.claude\\hooks\\inbox_checker.py",
+            "statusMessage": "Inbox 체크 중..."
+          },
+          {
+            "type": "command",
+            "command": "python D:\\AI\\claude01\\.claude\\hooks\\claude_md_validator.py",
+            "statusMessage": "CLAUDE.md 규칙 검증 중..."
+          }
+        ]
+      }
+    ]
+  }
+}
