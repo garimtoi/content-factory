@@ -37,8 +37,7 @@ archive-analyzer/scripts/rescan_netdrive.py
 archive-analyzer/scripts/retry_failed.py
 archive-analyzer/test_path.py
 
-# 로컬 에이전트 데이터
-.agent/
+# 로컬 에이전트 워크플로우 (.agent/) - 추적 중
 
 # 개발 환경
 .venv/
@@ -52,40 +51,24 @@ node_modules/
 
 # 백업 파일
 *.backup
-docs.backup/
-scripts.backup/
-
-# 임시 파일
 *.md.backup
-nul
 
-# Claude 설정 - 핵심 디렉토리는 추적
+# Claude 설정 - 개인/민감 데이터만 제외
 .claude/evolution/.env
 .claude/evolution/data/
 .claude/evolution/feedback/*.jsonl
-.claude/improvement-suggestions.md
 .claude/optimizer-error.log
-.claude/plugins.old/
 .claude/settings.local.json
-.claude-global/
 .claude.backup-*/
 
 # Agent tracking data (local only)
 .agent-quality-v2.jsonl
 
-# 구버전 문서들
-
-generate-tasks.md
-process-task-list.md
-SUMMARY.md
-TASKS_HISTORY.md
+# 구버전 문서 패턴
 CLAUDE.md.backup
-.gitmodules
-.claude-sync.sh
 
-# Symlinks
-docs-global/
-scripts-global/
+# 유틸리티 스크립트 (공유 불필요)
+.claude-sync.sh
 
 # 테스트 및 빌드 산출물
 playwright-report/

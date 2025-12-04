@@ -1,0 +1,193 @@
+rules_version = '2';
+
+// Firestore Security Rules
+// Issue #59, #61: 웹 기반 마이그레이션 UI + Firestore 스키마
+//
+// 배포: firebase deploy --only firestore:rules
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==================== Helper Functions ====================
+
+    // 인증된 사용자인지 확인
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // 관리자인지 확인 (users 컬렉션의 isAdmin 필드)
+    function isAdmin() {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    // 활성 사용자인지 확인
+    function isActiveUser() {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
+    }
+
+    // 본인 문서인지 확인
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 유효한 timestamp인지 확인
+    function isValidTimestamp(field) {
+      return request.resource.data[field] is timestamp;
+    }
+
+    // ==================== Public Collections (Read-only) ====================
+
+    // catalogs: 모든 사용자 읽기 가능, 관리자만 쓰기
+    match /catalogs/{catalogId} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      // series: catalogs 하위 컬렉션
+      match /series/{seriesId} {
+        allow read: if true;
+        allow write: if isAdmin();
+
+        // contents: series 하위 컬렉션
+        match /contents/{contentId} {
+          allow read: if true;
+          allow write: if isAdmin();
+        }
+      }
+    }
+
+    // files: 모든 사용자 읽기 가능, 관리자만 쓰기
+    match /files/{fileId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // players: 모든 사용자 읽기 가능, 관리자만 쓰기
+    match /players/{playerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // tags: 모든 사용자 읽기 가능, 관리자만 쓰기
+    match /tags/{tagId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ==================== User Collections ====================
+
+    // users: 본인만 읽기, 관리자는 모두 읽기/쓰기
+    match /users/{userId} {
+      // 읽기: 본인 또는 관리자
+      allow read: if isOwner(userId) || isAdmin();
+
+      // 생성: 인증된 사용자가 본인 문서 생성
+      allow create: if isOwner(userId) &&
+        request.resource.data.keys().hasAll(['username', 'email']) &&
+        request.resource.data.isAdmin == false;
+
+      // 수정: 본인은 일부 필드만, 관리자는 모두
+      allow update: if isOwner(userId) &&
+        // 사용자가 수정 가능한 필드
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'avatarUrl', 'preferredLanguage', 'autoplayEnabled'])
+        || isAdmin();
+
+      // 삭제: 관리자만
+      allow delete: if isAdmin();
+    }
+
+    // userSessions: 본인만 접근
+    match /userSessions/{sessionId} {
+      allow read, write: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+    }
+
+    // ==================== Migration Collections ====================
+
+    // migrationJobs: 관리자만 읽기/쓰기
+    match /migrationJobs/{jobId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() &&
+        request.resource.data.keys().hasAll(['jobType', 'status', 'startedBy']);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // migrationLocks: 관리자만 접근
+    match /migrationLocks/{lockType} {
+      allow read, write: if isAdmin();
+    }
+
+    // ==================== User Activity Collections ====================
+
+    // watchProgress: 본인만 접근
+    match /watchProgress/{progressId} {
+      allow read, write: if isAuthenticated() &&
+        (resource == null || resource.data.userId == request.auth.uid) &&
+        request.resource.data.userId == request.auth.uid;
+    }
+
+    // viewEvents: 본인은 쓰기, 관리자는 읽기
+    match /viewEvents/{eventId} {
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+      allow read: if isAdmin();
+    }
+
+    // userPreferences: 본인만 접근
+    match /userPreferences/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ==================== Recommendation Collections ====================
+
+    // recommendationCache: 관리자만 쓰기, 인증 사용자 읽기
+    match /recommendationCache/{cacheId} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+
+    // trendingScores: 관리자만 쓰기, 모두 읽기
+    match /trendingScores/{scoreId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // homeRows: 관리자만 쓰기, 인증 사용자 읽기
+    match /homeRows/{rowId} {
+      allow read: if isActiveUser();
+      allow write: if isAdmin();
+    }
+
+    // userHomeRows: 본인만 접근
+    match /userHomeRows/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ==================== Search Collections ====================
+
+    // searchHistory: 본인만 접근
+    match /searchHistory/{historyId} {
+      allow read, write: if isAuthenticated() &&
+        (resource == null || resource.data.userId == request.auth.uid) &&
+        request.resource.data.userId == request.auth.uid;
+    }
+
+    // popularSearches: 관리자만 쓰기, 모두 읽기
+    match /popularSearches/{searchId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ==================== Default: Deny All ====================
+
+    // 정의되지 않은 경로는 모두 거부
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
